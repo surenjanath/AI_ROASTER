@@ -41,6 +41,17 @@ export type Battle = {
   created_at: string;
 };
 
+export type Settings = {
+  provider: "emergent" | "ollama";
+  primary_model: string;
+  secondary_model: string;
+  ollama_base_url: string;
+  ollama_primary_model: string;
+  ollama_secondary_model: string;
+  max_turns: number;
+  intensity: "witty" | "savage" | "brutal";
+};
+
 async function req(path: string, opts?: RequestInit) {
   const res = await fetch(BASE + path, {
     headers: { "Content-Type": "application/json" },
@@ -68,4 +79,12 @@ export const api = {
     req(`/battles/${id}/turn`, { method: "POST" }),
   finishBattle: (id: string): Promise<Battle> =>
     req(`/battles/${id}/finish`, { method: "POST" }),
+  getSettings: (): Promise<Settings> => req("/settings"),
+  updateSettings: (s: Partial<Settings>): Promise<Settings> =>
+    req("/settings", { method: "PUT", body: JSON.stringify(s) }),
+  testOllama: (base_url: string): Promise<{ ok: boolean; models?: string[]; error?: string }> =>
+    req("/settings/test-ollama", {
+      method: "POST",
+      body: JSON.stringify({ base_url }),
+    }),
 };

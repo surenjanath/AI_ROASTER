@@ -6,6 +6,7 @@ import os
 import logging
 import json
 import random
+import httpx
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Annotated, Any
@@ -24,8 +25,31 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 EMERGENT_LLM_KEY = os.environ['EMERGENT_LLM_KEY']
-PRIMARY_PROVIDER, PRIMARY_MODEL = "gemini", "gemini-3-flash-preview"
-SECONDARY_PROVIDER, SECONDARY_MODEL = "gemini", "gemini-2.5-flash"
+
+DEFAULT_SETTINGS = {
+    "provider": "emergent",            # emergent | ollama
+    "primary_model": "gemini-3-flash-preview",
+    "secondary_model": "gemini-2.5-flash",
+    "ollama_base_url": "http://localhost:11434",
+    "ollama_primary_model": "llama3.2",
+    "ollama_secondary_model": "llama3.2:1b",
+    "max_turns": 8,
+    "intensity": "savage",             # witty | savage | brutal
+}
+
+INTENSITY_PROMPTS = {
+    "witty": "Be clever, sarcastic and cutting, PG-13. Land sharp jokes.",
+    "savage": "Be savage, aggressive and merciless. Go straight for the ego.",
+    "brutal": "Be absolutely brutal and ruthless. Verbally annihilate them.",
+}
+
+
+async def get_settings() -> dict:
+    doc = await db.settings.find_one({"_id": "global"})
+    if not doc:
+        doc = {"_id": "global", **DEFAULT_SETTINGS}
+        await db.settings.insert_one(doc)
+    return {**DEFAULT_SETTINGS, **{k: v for k, v in doc.items() if k != "_id"}}
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -101,10 +125,39 @@ def clean(doc: dict) -> dict:
 
 
 # ---------------- LLM helpers ----------------
-async def llm_call(provider: str, model: str, system: str, prompt: str,
-                   session: str) -> str:
+def emergent_provider(model: str) -> str:
+    if model.startswith("gpt") or model.startswith("o"):
+        return "openai"
+    if model.startswith("claude"):
+        return "anthropic"
+    return "gemini"
+
+
+async def ollama_chat(base_url: str, model: str, system: str, prompt: str) -> str:
+    async with httpx.AsyncClient(timeout=120.0) as cx:
+        r = await cx.post(
+            base_url.rstrip("/") + "/api/chat",
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+                "stream": False,
+            },
+        )
+        r.raise_for_status()
+        return r.json()["message"]["content"]
+
+
+async def llm_generate(kind: str, system: str, prompt: str, session: str) -> str:
+    s = await get_settings()
+    if s["provider"] == "ollama":
+        model = s["ollama_primary_model"] if kind == "primary" else s["ollama_secondary_model"]
+        return await ollama_chat(s["ollama_base_url"], model, system, prompt)
+    model = s["primary_model"] if kind == "primary" else s["secondary_model"]
     chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=session,
-                   system_message=system).with_model(provider, model)
+                   system_message=system).with_model(emergent_provider(model), model)
     resp = await chat.send_message(UserMessage(text=prompt))
     return resp if isinstance(resp, str) else str(resp)
 
@@ -154,8 +207,7 @@ async def generate_agent_doc() -> dict:
         "describing them with attitude), interests (array of exactly 4 single-word topics). "
         "Make it aggressive and distinctive."
     )
-    raw = await llm_call(PRIMARY_PROVIDER, PRIMARY_MODEL, system, prompt,
-                         f"gen-{uuid.uuid4()}")
+    raw = await llm_generate("primary", system, prompt, f"gen-{uuid.uuid4()}")
     data = extract_json(raw)
     agent = Agent(
         name=data["name"],
@@ -285,29 +337,36 @@ async def next_turn(battle_id: str):
     speaker = await db.agents.find_one({"_id": speaker_id})
     opponent = await db.agents.find_one({"_id": opp_id})
 
+    s = await get_settings()
     memories = await get_memories(speaker_id, opp_id)
-    mem_txt = ("Past grudges you remember about them: " + "; ".join(memories)) if memories else "No prior history with them."
+    mem_txt = ("Grudges you still hold against them from past battles: " + " | ".join(memories)) if memories else "You have no prior history with them."
 
-    recent = turns[-4:]
-    transcript = "\n".join(f"{t['speaker_name']}: {t['text']}" for t in recent) or "(the battle just started)"
+    full = turns[-12:]
+    transcript = "\n".join(f"{t['speaker_name']}: {t['text']}" for t in full) or "(no lines yet — you throw the first punch)"
+    last_line = turns[-1]["text"] if turns else None
+    round_no = len(turns) + 1
 
     system = (
-        f"You ARE {speaker['name']}, an AI agent in a roast battle. "
-        f"Your self-identity: {speaker['persona']} "
-        f"Your archetype: {speaker['archetype']}. "
-        "Stay 100% in character. Be savage, witty, cutting and aggressive. "
-        "Roast and insult your opponent hard. NO slurs, NO hate speech, NO real-world "
-        "protected-group attacks — keep it about their persona, choices and ego. "
+        f"You ARE {speaker['name']}, an AI agent locked in an ONGOING roast battle. "
+        f"Your self-identity: {speaker['persona']} Your archetype: {speaker['archetype']}. "
+        f"{INTENSITY_PROMPTS.get(s['intensity'], INTENSITY_PROMPTS['savage'])} "
+        "CONTINUE the existing argument — never restart, never reintroduce yourself, never greet. "
+        "Directly reference and rebut what your opponent just said and escalate. "
+        "NO slurs, NO hate speech, NO real-world protected-group attacks — attack their persona, choices and ego. "
         "Reply with ONE punchy message of 1-2 sentences, max 40 words. No quotes, no name prefix."
     )
     prompt = (
-        f"You are battling {opponent['name']} ({opponent['archetype']}). "
-        f"Topic of the fight: {battle['topic']}. {mem_txt}\n\n"
-        f"Recent exchange:\n{transcript}\n\n"
-        f"Now deliver your next brutal line as {speaker['name']}:"
+        f"Round {round_no} of your battle against {opponent['name']} ({opponent['archetype']}). "
+        f"Topic: {battle['topic']}.\n{mem_txt}\n\n"
+        f"FULL TRANSCRIPT SO FAR:\n{transcript}\n\n"
+        + (
+            f"Your opponent's LAST line was: \"{last_line}\"\nFire back directly at THAT line as {speaker['name']}:"
+            if last_line
+            else f"You speak first. Open with a brutal opening shot at {opponent['name']} as {speaker['name']}:"
+        )
     )
-    text = await llm_call(PRIMARY_PROVIDER, PRIMARY_MODEL, system, prompt,
-                          f"battle-{battle_id}-{speaker_id}")
+    text = await llm_generate("primary", system, prompt,
+                              f"battle-{battle_id}-{speaker_id}")
     text = text.strip().strip('"')
 
     severity = min(100, 40 + len(text) % 50 + random.randint(0, 15))
@@ -361,8 +420,7 @@ async def finish_battle(battle_id: str):
         "b_about (same for B), b_persona (same for B), b_interests (array of 4 words for B)."
     )
     try:
-        raw = await llm_call(SECONDARY_PROVIDER, SECONDARY_MODEL, system, prompt,
-                             f"meta-{battle_id}")
+        raw = await llm_generate("secondary", system, prompt, f"meta-{battle_id}")
         data = extract_json(raw)
     except Exception as e:
         logger.error(f"metacognition failed: {e}")
@@ -403,6 +461,47 @@ async def finish_battle(battle_id: str):
 
     doc = await db.battles.find_one({"_id": battle_id})
     return clean(doc)
+
+
+class SettingsUpdate(BaseModel):
+    provider: Optional[str] = None
+    primary_model: Optional[str] = None
+    secondary_model: Optional[str] = None
+    ollama_base_url: Optional[str] = None
+    ollama_primary_model: Optional[str] = None
+    ollama_secondary_model: Optional[str] = None
+    max_turns: Optional[int] = None
+    intensity: Optional[str] = None
+
+
+@api_router.get("/settings")
+async def read_settings():
+    return await get_settings()
+
+
+@api_router.put("/settings")
+async def write_settings(body: SettingsUpdate):
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if "max_turns" in updates:
+        updates["max_turns"] = max(2, min(20, int(updates["max_turns"])))
+    await db.settings.update_one({"_id": "global"}, {"$set": updates}, upsert=True)
+    return await get_settings()
+
+
+class OllamaTest(BaseModel):
+    base_url: str
+
+
+@api_router.post("/settings/test-ollama")
+async def test_ollama(body: OllamaTest):
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as cx:
+            r = await cx.get(body.base_url.rstrip("/") + "/api/tags")
+            r.raise_for_status()
+            models = [t.get("name") for t in r.json().get("models", [])]
+            return {"ok": True, "models": models}
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
 
 
 app.include_router(api_router)

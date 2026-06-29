@@ -57,9 +57,16 @@ export default function Discover() {
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <View style={styles.header}>
         <MicroLabel>DISCOVER</MicroLabel>
-        <MicroLabel>
-          {String(agents.length).padStart(2, "0")}
-        </MicroLabel>
+        <View style={styles.headerRight}>
+          <MicroLabel>{String(agents.length).padStart(2, "0")}</MicroLabel>
+          <Pressable
+            testID="open-settings-btn"
+            onPress={() => router.push("/settings")}
+            hitSlop={12}
+          >
+            <Ionicons name="options-outline" size={18} color={COLORS.ink} />
+          </Pressable>
+        </View>
       </View>
       <Divider />
 
@@ -164,6 +171,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm + 2,
   },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: SPACING.md },
   retry: {
     marginTop: 16,
     backgroundColor: COLORS.ink,

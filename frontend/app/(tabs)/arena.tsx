@@ -15,7 +15,7 @@ import { COLORS, FONTS, SPACING } from "@/src/theme";
 import { MicroLabel, Divider, Avatar } from "@/src/components";
 import { shareBattle } from "@/src/share";
 
-const MAX_TURNS = 8;
+const MAX_DEFAULT = 8;
 
 export default function Arena() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -27,6 +27,7 @@ export default function Arena() {
   const [thinking, setThinking] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [result, setResult] = useState<Battle | null>(null);
+  const [maxTurns, setMaxTurns] = useState(MAX_DEFAULT);
   const runRef = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -34,6 +35,8 @@ export default function Arena() {
     try {
       const list = await api.listAgents();
       setAgents(list);
+      const s = await api.getSettings();
+      setMaxTurns(s.max_turns);
     } catch {}
   }, []);
 
@@ -63,7 +66,7 @@ export default function Arena() {
     runRef.current = true;
     setRunning(true);
     let count = turns.length;
-    while (runRef.current && count < MAX_TURNS) {
+    while (runRef.current && count < maxTurns) {
       setThinking(true);
       try {
         const t = await api.nextTurn(battleId);
@@ -127,7 +130,11 @@ export default function Arena() {
       <View style={styles.header}>
         <MicroLabel>ARENA</MicroLabel>
         <MicroLabel color={running ? COLORS.blue : COLORS.mute}>
-          {running ? "● LIVE" : battle ? "STANDBY" : "SELECT 02"}
+          {running
+            ? `● LIVE · R${turns.length}/${maxTurns}`
+            : battle
+            ? "STANDBY"
+            : "SELECT 02"}
         </MicroLabel>
       </View>
       <Divider />
@@ -203,14 +210,18 @@ export default function Arena() {
             </MicroLabel>
             {turns.map((t, i) => {
               const isA = t.speaker_id === a?.id;
+              const sp = isA ? a : b;
               return (
                 <View
                   key={i}
                   style={[styles.bubble, isA ? styles.bubbleL : styles.bubbleR]}
                 >
-                  <MicroLabel color={isA ? COLORS.ink : COLORS.blue}>
-                    {`${t.speaker_name} · SEV ${t.severity}`}
-                  </MicroLabel>
+                  <View style={styles.bubbleHead}>
+                    {sp && <Avatar initials={sp.initials} size={20} />}
+                    <MicroLabel color={isA ? COLORS.ink : COLORS.blue}>
+                      {`${t.speaker_name} · SEV ${t.severity}`}
+                    </MicroLabel>
+                  </View>
                   <Text style={styles.bubbleText}>{t.text}</Text>
                 </View>
               );
@@ -266,10 +277,10 @@ export default function Arena() {
                   testID="resume-btn"
                   style={styles.resume}
                   onPress={() => battle && runLoop(battle.id)}
-                  disabled={turns.length >= MAX_TURNS}
+                  disabled={turns.length >= maxTurns}
                 >
                   <MicroLabel>
-                    {turns.length >= MAX_TURNS ? "ROUNDS DONE" : "RESUME"}
+                    {turns.length >= maxTurns ? "ROUNDS DONE" : "RESUME"}
                   </MicroLabel>
                 </Pressable>
                 <Pressable
@@ -407,6 +418,7 @@ const styles = StyleSheet.create({
   },
   bubbleL: { alignSelf: "flex-start", backgroundColor: COLORS.surfaceSecondary },
   bubbleR: { alignSelf: "flex-end", backgroundColor: COLORS.surface },
+  bubbleHead: { flexDirection: "row", alignItems: "center", gap: 6 },
   bubbleText: {
     fontFamily: FONTS.display,
     fontWeight: "700",
