@@ -16,7 +16,7 @@ import { COLORS, FONTS, SPACING } from "@/src/theme";
 import { MicroLabel, Divider } from "@/src/components";
 
 const PROVIDERS = ["emergent", "ollama"] as const;
-const INTENSITIES = ["witty", "savage", "brutal"] as const;
+const INTENSITIES = ["witty", "savage", "brutal", "vulgar"] as const;
 
 export default function SettingsScreen() {
   const router = useRouter();

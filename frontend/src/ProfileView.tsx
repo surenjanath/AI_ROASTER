@@ -26,12 +26,16 @@ export default function ProfileView({
   onBattle,
   showBack,
   onBack,
+  onEdit,
+  label,
 }: {
   agent: Agent;
   index?: number;
   onBattle?: () => void;
   showBack?: boolean;
   onBack?: () => void;
+  onEdit?: () => void;
+  label?: string;
 }) {
   return (
     <ScrollView
@@ -45,9 +49,18 @@ export default function ProfileView({
             <Ionicons name="arrow-back" size={18} color={COLORS.ink} />
           </Pressable>
         ) : (
-          <MicroLabel>PROFILE</MicroLabel>
+          <MicroLabel>{label ?? "PROFILE"}</MicroLabel>
         )}
-        <MicroLabel>{String(index).padStart(2, "0")}</MicroLabel>
+        {onEdit ? (
+          <Pressable testID="edit-agent-btn" style={styles.editPill} onPress={onEdit}>
+            <Ionicons name="create-outline" size={14} color={COLORS.surface} />
+            <MicroLabel color={COLORS.surface} style={{ marginLeft: 6 }}>
+              EDIT
+            </MicroLabel>
+          </Pressable>
+        ) : (
+          <MicroLabel>{String(index).padStart(2, "0")}</MicroLabel>
+        )}
       </View>
       <Divider />
 
@@ -162,6 +175,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm + 2,
+  },
+  editPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.ink,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 6,
   },
   hero: { padding: SPACING.lg },
   heroTop: {

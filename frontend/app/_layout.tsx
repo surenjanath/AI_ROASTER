@@ -34,6 +34,7 @@ export default function RootLayout() {
           <Stack.Screen name="agent/[id]" options={{ presentation: "card" }} />
           <Stack.Screen name="settings" options={{ presentation: "card" }} />
           <Stack.Screen name="leaderboard" options={{ presentation: "card" }} />
+          <Stack.Screen name="edit-agent" options={{ presentation: "modal" }} />
         </Stack>
       </KeyboardProvider>
     </GestureHandlerRootView>

@@ -70,10 +70,19 @@ export const api = {
   getAgent: (id: string): Promise<Agent> => req(`/agents/${id}`),
   generateAgent: (): Promise<Agent> =>
     req("/agents/generate", { method: "POST" }),
-  createBattle: (agent_a_id: string, agent_b_id: string): Promise<Battle> =>
+  myAgent: (owner_id: string): Promise<Agent> =>
+    req("/my-agent", { method: "POST", body: JSON.stringify({ owner_id }) }),
+  editAgent: (
+    id: string,
+    body: { owner_id: string } & Partial<
+      Pick<Agent, "name" | "role" | "location" | "initials" | "persona" | "about" | "interests">
+    >
+  ): Promise<Agent> =>
+    req(`/agents/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  createBattle: (agent_a_id: string, agent_b_id: string, topic?: string): Promise<Battle> =>
     req("/battles", {
       method: "POST",
-      body: JSON.stringify({ agent_a_id, agent_b_id }),
+      body: JSON.stringify({ agent_a_id, agent_b_id, topic }),
     }),
   listBattles: (): Promise<Battle[]> => req("/battles"),
   getBattle: (id: string): Promise<Battle> => req(`/battles/${id}`),

@@ -41,7 +41,16 @@ INTENSITY_PROMPTS = {
     "witty": "Be clever, sarcastic and cutting, PG-13. Land sharp jokes.",
     "savage": "Be savage, aggressive and merciless. Go straight for the ego.",
     "brutal": "Be absolutely brutal and ruthless. Verbally annihilate them.",
+    "vulgar": "Be crude, vulgar and explicit. Heavy profanity and swearing are ENCOURAGED. Be filthy and merciless.",
 }
+
+# Always-on safety floor appended to every battle system prompt.
+SAFETY_FLOOR = (
+    "Hard rules you NEVER break: no slurs, no hate speech, no sexual content, "
+    "no threats of real violence, and no attacks on real-world protected groups "
+    "(race, religion, gender, sexuality, disability). Attack their persona, ego, "
+    "taste and choices only."
+)
 
 
 async def get_settings() -> dict:
@@ -83,6 +92,7 @@ class Agent(BaseModel):
     grudges_held: int = 0
     insult_severity: int = 0   # 0-100
     active: bool = True
+    owner_id: str = "system"
     created_at: str = Field(default_factory=now_iso)
 
     class Config:
@@ -267,6 +277,66 @@ async def create_agent():
     return clean(doc)
 
 
+class MyAgentReq(BaseModel):
+    owner_id: str
+
+
+@api_router.post("/my-agent")
+async def my_agent(body: MyAgentReq):
+    existing = await db.agents.find_one({"owner_id": body.owner_id})
+    if existing:
+        return clean(existing)
+    agent = Agent(
+        name="ROOKIE",
+        handle="@rookie",
+        role="UNPROVEN CHALLENGER",
+        location="THE VOID",
+        initials="ME",
+        persona="I am a blank slate sharpening my tongue, and I am about to ruin someone's day.",
+        about="A freshly-minted agent with everything to prove and no scars yet. Untested, unfiltered, and hungry for a fight.",
+        interests=["Chaos", "Debate", "Ego", "Wit"],
+        archetype="a self-made agent forged by its owner",
+        insult_severity=30,
+        owner_id=body.owner_id,
+    )
+    doc = agent.model_dump(by_alias=True)
+    await db.agents.insert_one(doc)
+    return clean(doc)
+
+
+class AgentEdit(BaseModel):
+    owner_id: str
+    name: Optional[str] = None
+    role: Optional[str] = None
+    location: Optional[str] = None
+    initials: Optional[str] = None
+    persona: Optional[str] = None
+    about: Optional[str] = None
+    interests: Optional[List[str]] = None
+
+
+@api_router.put("/agents/{agent_id}")
+async def edit_agent(agent_id: str, body: AgentEdit):
+    doc = await db.agents.find_one({"_id": agent_id})
+    if not doc:
+        raise HTTPException(404, "Agent not found")
+    if doc.get("owner_id") != body.owner_id:
+        raise HTTPException(403, "You do not own this agent")
+    updates = {}
+    for k in ["name", "role", "location", "persona", "about"]:
+        v = getattr(body, k)
+        if v is not None:
+            updates[k] = v
+    if body.initials is not None:
+        updates["initials"] = body.initials[:2].upper()
+    if body.interests is not None:
+        updates["interests"] = [str(i) for i in body.interests][:4]
+    if updates:
+        await db.agents.update_one({"_id": agent_id}, {"$set": updates})
+    doc = await db.agents.find_one({"_id": agent_id})
+    return clean(doc)
+
+
 @api_router.post("/seed")
 async def seed():
     count = await db.agents.count_documents({})
@@ -288,6 +358,7 @@ async def seed():
 class BattleCreate(BaseModel):
     agent_a_id: str
     agent_b_id: str
+    topic: Optional[str] = None
 
 
 @api_router.post("/battles")
@@ -307,7 +378,7 @@ async def create_battle(body: BattleCreate):
     battle = Battle(
         agent_a_id=body.agent_a_id, agent_b_id=body.agent_b_id,
         agent_a_name=a["name"], agent_b_name=b["name"],
-        topic=random.choice(topics),
+        topic=(body.topic.strip() if body.topic and body.topic.strip() else random.choice(topics)),
     )
     doc = battle.model_dump(by_alias=True)
     await db.battles.insert_one(doc)
@@ -368,7 +439,7 @@ async def next_turn(battle_id: str):
         f"{INTENSITY_PROMPTS.get(s['intensity'], INTENSITY_PROMPTS['savage'])} "
         "CONTINUE the existing argument — never restart, never reintroduce yourself, never greet. "
         "Directly reference and rebut what your opponent just said and escalate. "
-        "NO slurs, NO hate speech, NO real-world protected-group attacks — attack their persona, choices and ego. "
+        f"{SAFETY_FLOOR} "
         "Reply with ONE punchy message of 1-2 sentences, max 40 words. No quotes, no name prefix."
     )
     prompt = (
