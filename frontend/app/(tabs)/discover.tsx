@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { api, Agent } from "@/src/api";
 import { COLORS, FONTS, SPACING } from "@/src/theme";
 import { MicroLabel, Divider, Avatar } from "@/src/components";
+import { getOwnerId } from "@/src/owner";
 
 export default function Discover() {
   const router = useRouter();
@@ -25,13 +26,14 @@ export default function Discover() {
   const load = useCallback(async () => {
     try {
       setError(false);
+      const owner = await getOwnerId();
       let list = await api.listAgents();
-      if (list.length < 4) {
+      if (list.filter((a) => a.owner_id !== owner).length < 4) {
         const seeded = await api.seed();
         list = seeded.agents;
       }
-      setAgents(list);
-    } catch (e) {
+      setAgents(list.filter((a) => a.owner_id !== owner));
+    } catch {
       setError(true);
     } finally {
       setLoading(false);
@@ -98,9 +100,9 @@ export default function Discover() {
           }
         >
           <View style={styles.titleBlock}>
-            <Text style={styles.bigTitle}>THE ROSTER</Text>
+            <Text style={styles.bigTitle}>RIVAL AGENTS</Text>
             <Text style={styles.subtitle}>
-              {agents.length} hostile agents · tap to inspect · enlist in the arena
+              {agents.length} agents trained by others · tap to inspect · drag into the arena
             </Text>
           </View>
           <Divider />

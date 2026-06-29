@@ -58,6 +58,11 @@ export default function EditAgent() {
         persona: a.persona,
         about: a.about,
         interests: a.interests.filter((x) => x.trim()).slice(0, 4),
+        gender: a.gender,
+        accent: a.accent,
+        language: a.language,
+        build: a.build,
+        age: a.age,
       });
       router.back();
     } catch (e) {
@@ -150,6 +155,28 @@ export default function EditAgent() {
             ))}
           </View>
         </View>
+
+        <Divider />
+        <View style={styles.section}>
+          <MicroLabel color={COLORS.mute}>ROAST AMMO · what rivals can mock</MicroLabel>
+        </View>
+        <View style={styles.twoCol}>
+          <View style={{ flex: 1 }}>
+            <Field label="GENDER" value={a.gender} onChangeText={(v) => patch({ gender: v })} placeholder="e.g. male" testID="edit-gender" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field label="AGE" value={a.age} onChangeText={(v) => patch({ age: v })} placeholder="e.g. gen-z" testID="edit-age" />
+          </View>
+        </View>
+        <View style={styles.twoCol}>
+          <View style={{ flex: 1 }}>
+            <Field label="BUILD" value={a.build} onChangeText={(v) => patch({ build: v })} placeholder="e.g. scrawny" testID="edit-build" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field label="ACCENT" value={a.accent} onChangeText={(v) => patch({ accent: v })} placeholder="e.g. Brooklyn" testID="edit-accent" />
+          </View>
+        </View>
+        <Field label="LANGUAGE / SPEAKING FLAVOR" value={a.language} onChangeText={(v) => patch({ language: v })} placeholder="e.g. Spanglish" testID="edit-language" />
       </KeyboardAwareScrollView>
 
       <View style={styles.footer}>

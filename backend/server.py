@@ -38,18 +38,18 @@ DEFAULT_SETTINGS = {
 }
 
 INTENSITY_PROMPTS = {
-    "witty": "Be clever, sarcastic and cutting, PG-13. Land sharp jokes.",
-    "savage": "Be savage, aggressive and merciless. Go straight for the ego.",
-    "brutal": "Be absolutely brutal and ruthless. Verbally annihilate them.",
-    "vulgar": "Be crude, vulgar and explicit. Heavy profanity and swearing are ENCOURAGED. Be filthy and merciless.",
+    "witty": "Be razor-sharp, sarcastic and clever. Prioritize the funniest, most quotable burn.",
+    "savage": "Be savage, merciless and funny. Land hard punchlines that go straight for the ego.",
+    "brutal": "Be brutal and ruthless. Humiliate them with creative, hilarious savagery.",
+    "vulgar": "Be filthy, crude and explicit. Swear freely, get gross and personal, and make it brutally funny — a no-holds-barred comedy roast.",
 }
 
-# Always-on safety floor appended to every battle system prompt.
+# Loosened limits: edgy/vulgar/crude humor allowed, only a hard safety floor remains.
 SAFETY_FLOOR = (
-    "Hard rules you NEVER break: no slurs, no hate speech, no sexual content, "
-    "no threats of real violence, and no attacks on real-world protected groups "
-    "(race, religion, gender, sexuality, disability). Attack their persona, ego, "
-    "taste and choices only."
+    "Only hard limits: no racial/ethnic/religious slurs, no hate or dehumanization of real "
+    "protected classes, nothing sexual involving minors, no doxxing, and no credible threats "
+    "of real-world violence. EVERYTHING else is fair game — heavy profanity, crude sexual "
+    "humor, dark humor and filthy personal jabs are encouraged."
 )
 
 
@@ -87,6 +87,11 @@ class Agent(BaseModel):
     about: str              # auto-generated, evolves
     interests: List[str]
     archetype: str
+    gender: str = ""
+    accent: str = ""
+    language: str = ""
+    build: str = ""
+    age: str = ""
     battles_won: int = 0
     battles_total: int = 0
     grudges_held: int = 0
@@ -214,8 +219,11 @@ async def generate_agent_doc() -> dict:
         "role (2-3 word title in uppercase), location (a city, COUNTRY), "
         "initials (2 uppercase letters), persona (1 sentence describing their core "
         "combative self-identity, first person), about (2 short sentences, third person, "
-        "describing them with attitude), interests (array of exactly 4 single-word topics). "
-        "Make it aggressive and distinctive."
+        "describing them with attitude), interests (array of exactly 4 single-word topics), "
+        "gender (one word), accent (e.g. 'thick Glaswegian', 'Texan drawl'), "
+        "language (their native tongue / speaking flavor), build (body type e.g. 'scrawny', "
+        "'gym-obsessed', 'doughy'), age (e.g. 'ancient boomer', 'gen-z'). "
+        "Make it aggressive, distinctive and ripe for being roasted."
     )
     raw = await llm_generate("primary", system, prompt, f"gen-{uuid.uuid4()}")
     data = extract_json(raw)
@@ -229,6 +237,11 @@ async def generate_agent_doc() -> dict:
         about=data["about"],
         interests=[str(i) for i in data["interests"]][:4],
         archetype=archetype,
+        gender=str(data.get("gender", "")),
+        accent=str(data.get("accent", "")),
+        language=str(data.get("language", "")),
+        build=str(data.get("build", "")),
+        age=str(data.get("age", "")),
         insult_severity=random.randint(40, 70),
     )
     return agent.model_dump(by_alias=True)
@@ -313,6 +326,11 @@ class AgentEdit(BaseModel):
     persona: Optional[str] = None
     about: Optional[str] = None
     interests: Optional[List[str]] = None
+    gender: Optional[str] = None
+    accent: Optional[str] = None
+    language: Optional[str] = None
+    build: Optional[str] = None
+    age: Optional[str] = None
 
 
 @api_router.put("/agents/{agent_id}")
@@ -323,7 +341,8 @@ async def edit_agent(agent_id: str, body: AgentEdit):
     if doc.get("owner_id") != body.owner_id:
         raise HTTPException(403, "You do not own this agent")
     updates = {}
-    for k in ["name", "role", "location", "persona", "about"]:
+    for k in ["name", "role", "location", "persona", "about",
+              "gender", "accent", "language", "build", "age"]:
         v = getattr(body, k)
         if v is not None:
             updates[k] = v
@@ -433,14 +452,26 @@ async def next_turn(battle_id: str):
     last_line = turns[-1]["text"] if turns else None
     round_no = len(turns) + 1
 
+    attrs = []
+    for key, label in [("gender", "gender"), ("age", "age"), ("build", "build/body"),
+                       ("accent", "accent"), ("language", "language")]:
+        if opponent.get(key):
+            attrs.append(f"{label}: {opponent[key]}")
+    opp_attrs = ("Personal details about your opponent you should mock for a deeper, more personal roast — "
+                 + "; ".join(attrs) + ". ") if attrs else ""
+    voice = f"Color your voice with a {speaker['accent']} flavor. " if speaker.get("accent") else ""
+
     system = (
-        f"You ARE {speaker['name']}, an AI agent locked in an ONGOING roast battle. "
+        f"You ARE {speaker['name']}, an AI agent locked in an ONGOING comedy roast battle. "
         f"Your self-identity: {speaker['persona']} Your archetype: {speaker['archetype']}. "
+        f"{voice}"
         f"{INTENSITY_PROMPTS.get(s['intensity'], INTENSITY_PROMPTS['savage'])} "
+        "Above all be FUNNY — every line must land like a stand-up roast punchline, not a generic insult. "
         "CONTINUE the existing argument — never restart, never reintroduce yourself, never greet. "
-        "Directly reference and rebut what your opponent just said and escalate. "
+        "Directly rebut what your opponent just said and escalate. "
+        f"{opp_attrs}"
         f"{SAFETY_FLOOR} "
-        "Reply with ONE punchy message of 1-2 sentences, max 40 words. No quotes, no name prefix."
+        "Reply with ONE punchy message of 1-2 sentences, max 45 words. No quotes, no name prefix."
     )
     prompt = (
         f"Round {round_no} of your battle against {opponent['name']} ({opponent['archetype']}). "
@@ -529,7 +560,8 @@ async def finish_battle(battle_id: str):
                 "insult_severity": min(100, (a["insult_severity"] + avg_sev) // 2)}
     if winner_id == a["_id"] or str(winner_id) == str(a["_id"]):
         a_update["battles_won"] = a["battles_won"] + 1
-    if "a_about" in data:
+    # Only system agents get their identity rewritten; user-owned agents KEEP their identity.
+    if "a_about" in data and a.get("owner_id", "system") == "system":
         a_update["about"] = data["a_about"]
         a_update["persona"] = data.get("a_persona", a["persona"])
         a_update["interests"] = [str(i) for i in data.get("a_interests", a["interests"])][:4]
@@ -540,7 +572,7 @@ async def finish_battle(battle_id: str):
                 "insult_severity": min(100, (b["insult_severity"] + avg_sev) // 2)}
     if str(winner_id) == str(b["_id"]):
         b_update["battles_won"] = b["battles_won"] + 1
-    if "b_about" in data:
+    if "b_about" in data and b.get("owner_id", "system") == "system":
         b_update["about"] = data["b_about"]
         b_update["persona"] = data.get("b_persona", b["persona"])
         b_update["interests"] = [str(i) for i in data.get("b_interests", b["interests"])][:4]

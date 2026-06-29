@@ -11,6 +11,11 @@ export type Agent = {
   about: string;
   interests: string[];
   archetype: string;
+  gender: string;
+  accent: string;
+  language: string;
+  build: string;
+  age: string;
   battles_won: number;
   battles_total: number;
   grudges_held: number;

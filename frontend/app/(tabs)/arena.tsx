@@ -14,8 +14,19 @@ import { api, Agent, Battle, Turn } from "@/src/api";
 import { COLORS, FONTS, SPACING } from "@/src/theme";
 import { MicroLabel, Divider, Avatar } from "@/src/components";
 import { shareBattle } from "@/src/share";
+import { getOwnerId } from "@/src/owner";
 
 const MAX_DEFAULT = 8;
+
+const TOPICS: { label: string; value?: string }[] = [
+  { label: "RANDOM" },
+  { label: "WORSE TASTE", value: "who has worse taste" },
+  { label: "BIGGER FRAUD", value: "who is the bigger fraud" },
+  { label: "MORE PATHETIC", value: "whose worldview is more pathetic" },
+  { label: "BIGGER WASTE", value: "who is the bigger waste of carbon" },
+  { label: "UGLIER INSIDE", value: "who is uglier on the inside" },
+  { label: "WHO PEAKED", value: "who peaked harder and fell further" },
+];
 
 export default function Arena() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -28,11 +39,15 @@ export default function Arena() {
   const [finishing, setFinishing] = useState(false);
   const [result, setResult] = useState<Battle | null>(null);
   const [maxTurns, setMaxTurns] = useState(MAX_DEFAULT);
+  const [ownerId, setOwnerId] = useState<string>("");
+  const [topicIdx, setTopicIdx] = useState(0);
   const runRef = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
 
   const load = useCallback(async () => {
     try {
+      const owner = await getOwnerId();
+      setOwnerId(owner);
       const list = await api.listAgents();
       setAgents(list);
       const s = await api.getSettings();
@@ -87,7 +102,7 @@ export default function Arena() {
   const startBattle = async () => {
     if (!a || !b) return;
     try {
-      const bt = await api.createBattle(a.id, b.id);
+      const bt = await api.createBattle(a.id, b.id, TOPICS[topicIdx].value);
       setBattle(bt);
       setTurns([]);
       setResult(null);
@@ -149,6 +164,27 @@ export default function Arena() {
       </View>
       <Divider />      {!battle ? (
         <View style={{ flex: 1 }}>
+          <View style={styles.topicWrap}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.topicRow}
+            >
+              {TOPICS.map((t, i) => (
+                <Pressable
+                  key={t.label}
+                  testID={`topic-${i}`}
+                  onPress={() => setTopicIdx(i)}
+                  style={[styles.topicChip, topicIdx === i && styles.topicChipOn]}
+                >
+                  <Text style={[styles.topicTxt, topicIdx === i && styles.topicTxtOn]}>
+                    {t.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+          <Divider />
           <View style={styles.pickHead}>
             <MicroLabel color={COLORS.mute}>TAP TO ENLIST TWO COMBATANTS</MicroLabel>
           </View>
@@ -156,6 +192,7 @@ export default function Arena() {
             {agents.map((ag, i) => {
               const sel = a?.id === ag.id || b?.id === ag.id;
               const slot = a?.id === ag.id ? "01" : b?.id === ag.id ? "02" : null;
+              const mine = ag.owner_id === ownerId && ownerId !== "";
               return (
                 <Pressable
                   key={ag.id}
@@ -168,12 +205,19 @@ export default function Arena() {
                     </Text>
                     <Avatar initials={ag.initials} size={34} />
                     <View style={{ flex: 1 }}>
-                      <Text
-                        style={[styles.pickName, sel && { color: COLORS.surface }]}
-                        numberOfLines={1}
-                      >
-                        {ag.name}
-                      </Text>
+                      <View style={styles.pickNameRow}>
+                        <Text
+                          style={[styles.pickName, sel && { color: COLORS.surface }]}
+                          numberOfLines={1}
+                        >
+                          {ag.name}
+                        </Text>
+                        {mine && (
+                          <View style={styles.youBadge}>
+                            <MicroLabel color={sel ? COLORS.ink : COLORS.surface}>YOU</MicroLabel>
+                          </View>
+                        )}
+                      </View>
                       <MicroLabel color={sel ? COLORS.surface : COLORS.mute}>
                         {ag.role}
                       </MicroLabel>
@@ -378,6 +422,26 @@ const styles = StyleSheet.create({
     color: COLORS.ink,
   },
   pickHead: { paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm },
+  topicWrap: { height: 56, justifyContent: "center" },
+  topicRow: { gap: SPACING.sm, paddingHorizontal: SPACING.lg, alignItems: "center" },
+  topicChip: {
+    flexShrink: 0,
+    height: 36,
+    paddingHorizontal: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  topicChipOn: { backgroundColor: COLORS.ink },
+  topicTxt: { fontFamily: FONTS.mono, fontSize: 10, letterSpacing: 1, color: COLORS.ink },
+  topicTxtOn: { color: COLORS.surface },
+  pickNameRow: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
+  youBadge: {
+    backgroundColor: COLORS.blue,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
   pickRow: {
     flexDirection: "row",
     alignItems: "center",

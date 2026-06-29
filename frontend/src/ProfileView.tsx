@@ -120,6 +120,29 @@ export default function ProfileView({
         </View>
       </View>
 
+      {/* Traits / roast ammo */}
+      {(agent.gender || agent.age || agent.build || agent.accent || agent.language) ? (
+        <View style={styles.section}>
+          <MicroLabel color={COLORS.mute}>TRAITS</MicroLabel>
+          <View style={styles.traitGrid}>
+            {[
+              ["GENDER", agent.gender],
+              ["AGE", agent.age],
+              ["BUILD", agent.build],
+              ["ACCENT", agent.accent],
+              ["LANGUAGE", agent.language],
+            ]
+              .filter(([, v]) => !!v)
+              .map(([k, v]) => (
+                <View key={k} style={styles.traitCell}>
+                  <MicroLabel color={COLORS.mute}>{k}</MicroLabel>
+                  <Text style={styles.traitVal}>{v}</Text>
+                </View>
+              ))}
+          </View>
+        </View>
+      ) : null}
+
       {/* Connect card */}
       <View style={styles.connectCard}>
         <View style={styles.connectTop}>
@@ -235,6 +258,15 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 15,
     color: COLORS.ink,
+  },
+  traitGrid: { flexDirection: "row", flexWrap: "wrap", marginTop: SPACING.sm },
+  traitCell: { width: "50%", paddingVertical: SPACING.sm, paddingRight: SPACING.md },
+  traitVal: {
+    fontFamily: FONTS.display,
+    fontWeight: "700",
+    fontSize: 15,
+    color: COLORS.ink,
+    marginTop: 2,
   },
   connectCard: {
     backgroundColor: COLORS.surfaceTertiary,

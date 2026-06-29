@@ -1,0 +1,48 @@
+{
+  "summary": "All targeted features for the owned-agent / vulgar / custom-topic / identity-retention iteration PASS. Backend pytest 12/12 green: (a) POST /api/my-agent is idempotent — first call creates a ROOKIE owned by owner_id, second returns same id; (b) PUT /api/agents/{id} with matching owner_id updates name/role/location/initials/persona/about/interests AND new fields gender/accent/language/build/age and persists (GET verifies); wrong owner_id returns 403; (c) IDENTITY RETENTION verified — created owned agent, edited identity, battled vs a system rival with custom topic 'TEST_who_brushes_their_teeth_worse', ran 2 turns, finished: owned agent persona/about/interests UNCHANGED while battles_total +1, grudges_held +1 (battles_won +0/+1); rival's battles_total also incremented; (d) custom topic stored verbatim in the battle doc; (e) PUT /api/settings {intensity:'vulgar'} accepted and a subsequent /turn generated non-empty content without 500; restored to 'savage' after. Leaderboard still sorts by shame_score desc with rank=1 on top. Regression smoke (root, list-agents, settings GET, test-ollama unreachable -> {ok:false, no 500}) all pass. Frontend smoke (mobile viewport 390x844): Discover headline reads 'RIVAL AGENTS' and the user's owned agent is excluded from the list; Profile tab labels 'MY AGENT' and exposes EDIT which opens /edit-agent showing CODENAME / ROLE / INITIALS / LOCATION / SELF-IDENTITY / ABOUT / 4 interest inputs / ROAST AMMO group with gender, age, build, accent, language testIDs; Save persists and returns; Arena shows the topic chip row (RANDOM + WORSE TASTE + BIGGER FRAUD + MORE PATHETIC + ...) with topic-{i} testIDs and a YOU badge on the owned agent in the enlist list; Settings intensity selector includes VULGAR (4 options) with testID intensity-vulgar. Two console warnings observed on web (non-blocking, see frontend_issues).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "arena.tsx", "issue": "Console error 'Unexpected text node: \"      \". A text node cannot be a child of a <View>.' fires 4x on Arena mount. Source: stray whitespace between JSX siblings — `<Divider />      {!battle ? (` at /app/frontend/app/(tabs)/arena.tsx:165. RN-web treats the trailing spaces as a text node. Fix: put the conditional on the next line with no inline whitespace, e.g. `<Divider />\\n{!battle ? (`."},
+      {"component": "global console", "issue": "Warning 'props.pointerEvents is deprecated. Use style.pointerEvents.' still emitted by a third-party RN lib (unchanged from iteration 2)."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_owned_agent.py",
+    "/app/backend/tests/test_settings_and_continuity.py",
+    "/app/backend/tests/test_arena_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Fix stray whitespace at /app/frontend/app/(tabs)/arena.tsx:165 ('<Divider />      {!battle ?') to silence the 'Unexpected text node' RN-web errors.",
+    "Tighten TS type at /app/frontend/src/api.ts editAgent — the Pick<Agent, ...> body type omits the new ammo fields (gender/accent/language/build/age) even though edit-agent.tsx spreads them and the backend accepts them. Add them to the Pick so the call is type-safe.",
+    "Optional: investigate the lib emitting 'props.pointerEvents is deprecated' and bump it."
+  ],
+  "critical_code_review_comments": [
+    "server.py /my-agent correctly uses find_one({owner_id}) for idempotency and seeds a ROOKIE template only when missing.",
+    "server.py PUT /agents/{id} enforces owner equality and only patches whitelisted keys including the new ammo fields; initials uppercased+clipped to 2; interests trimmed to 4.",
+    "server.py finish_battle now guards identity rewrite with `a.get('owner_id','system') == 'system'` for both A and B — this is the exact mechanism behind IDENTITY RETENTION. Stats (battles_total/grudges_held/insult_severity/battles_won) update unconditionally. Verified empirically.",
+    "server.py create_battle honors body.topic when non-empty/non-whitespace, else picks from preset list. Custom-topic passthrough verified.",
+    "INTENSITY_PROMPTS includes a 'vulgar' key and next_turn falls back to 'savage' if unknown — safe.",
+    "Frontend api.ts editAgent type Pick<...> does NOT include the new ammo fields — minor type drift; runtime is fine because the body is serialized to JSON and FastAPI ignores extra fields it doesn't model. Backend AgentEdit DOES include them so they ARE persisted.",
+    "Frontend Discover filters `a.owner_id !== owner` so the user's own agent never appears in RIVAL AGENTS — correct.",
+    "Frontend Arena marks owned agent with a YOU badge gated on `ownerId !== ''` to avoid a flash before owner_id is fetched — good."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_owned_agent.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/iteration_3.json"
+  ],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "100% on tested flows (6/6 smoke checks: RIVAL AGENTS title, MY AGENT label, edit-agent screen + ammo fields, topic chips, YOU badge, VULGAR option)"},
+  "seed_data_creation": "Reused existing roster; created one TEST_owner_* with an owned agent (renamed VENOM) and ran one finished battle vs a system rival to verify identity retention. No destructive data changes.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run `EXPO_PUBLIC_BACKEND_URL=https://roast-ring-1.preview.emergentagent.com pytest /app/backend/tests/test_owned_agent.py -v` for the full owned-agent suite (~40s, includes 2 live LLM turns + 1 finish). The test uses a fresh TEST_owner_<uuid> each run so it can be re-run safely without cleanup. If you change next_turn prompts, also run test_settings_and_continuity.py to keep the no-restart heuristic green.",
+  "rca_of_issue": "No regression to RCA this iteration — feature work landed cleanly. The console 'Unexpected text node' messages on Arena trace back to a trailing-spaces artifact in JSX (arena.tsx:165) — RN-web wraps that whitespace as a text node which is illegal inside <View>. Mitigation: remove the inline whitespace between `<Divider />` and the ternary."
+}
