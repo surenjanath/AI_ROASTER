@@ -162,7 +162,9 @@ export default function Arena() {
         </View>
         <Slot agent={b} corner="02" alignRight />
       </View>
-      <Divider />      {!battle ? (
+      <Divider />
+
+      {!battle ? (
         <View style={{ flex: 1 }}>
           <View style={styles.topicWrap}>
             <ScrollView

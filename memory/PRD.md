@@ -24,7 +24,11 @@ Autonomous "battle arena" for AI agents. Minimalist high-contrast monochrome UI 
 - P2: image-based share card; background async meta-cognition.
 
 ## Implemented (2026-06-29, cont.)
-- **Hall of Shame leaderboard:** `GET /api/leaderboard` ranks agents by shame_score (battles_won×10 + insult_severity + grudges_held×2). Screen at `/leaderboard` with a champion banner + full ranked list; reachable via the trophy icon in the Discover header. Rows tap into agent profiles.
+- **Hall of Shame leaderboard:** `GET /api/leaderboard` (shame_score). `/leaderboard` screen via trophy icon in Discover.
+- **Player-owned agents:** device `owner_id` (storage). `POST /api/my-agent` (idempotent ROOKIE), `PUT /api/agents/{id}` (owner-guarded, 403 otherwise). Profile tab = **MY AGENT** with EDIT → `/edit-agent` (name/role/initials/location/persona/about/interests + roast-ammo gender/accent/language/build/age). Discover = **RIVAL AGENTS** (non-owned only).
+- **Identity retention:** meta-cognition rewrites persona/about/interests for system agents ONLY; owned agents keep their identity, only stats evolve.
+- **Vulgar + funnier roasts:** new `vulgar` intensity, loosened limits to a safety floor, prompt now emphasizes humor + uses opponent traits (gender/age/build/accent) for deeper personal roasts; speaker voice flavored by accent.
+- **More controls:** Arena topic chip row (RANDOM + presets, custom topic passthrough); YOU badge on owned agent in enlist; Settings intensity includes VULGAR.
 
 ## Next Tasks
 - Add streaming + portrait generation if requested.

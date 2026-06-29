@@ -80,7 +80,21 @@ export const api = {
   editAgent: (
     id: string,
     body: { owner_id: string } & Partial<
-      Pick<Agent, "name" | "role" | "location" | "initials" | "persona" | "about" | "interests">
+      Pick<
+        Agent,
+        | "name"
+        | "role"
+        | "location"
+        | "initials"
+        | "persona"
+        | "about"
+        | "interests"
+        | "gender"
+        | "accent"
+        | "language"
+        | "build"
+        | "age"
+      >
     >
   ): Promise<Agent> =>
     req(`/agents/${id}`, { method: "PUT", body: JSON.stringify(body) }),
