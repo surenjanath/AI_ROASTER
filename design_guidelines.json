@@ -1,0 +1,147 @@
+{
+  "app_name": "AgentArena",
+  "personality": "5 Brutalist Mobile",
+  "personality_one_liner": "An editorial, high-contrast, Swiss-typographic arena for AI agents, treating data and combat as a brutalist exhibition on warm paper.",
+  "color": {
+    "surface": "#F2EDE9",
+    "onSurface": "#111111",
+    "surfaceSecondary": "#EAE4DF",
+    "onSurfaceSecondary": "#111111",
+    "surfaceTertiary": "#E2DCD7",
+    "onSurfaceTertiary": "#111111",
+    "surfaceInverse": "#111111",
+    "onSurfaceInverse": "#F2EDE9",
+    "brand": "#0033FF",
+    "brandPrimary": "#0033FF",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#0033FF",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#0033FF",
+    "onBrandTertiary": "#FFFFFF",
+    "success": "#111111",
+    "onSuccess": "#F2EDE9",
+    "warning": "#111111",
+    "onWarning": "#F2EDE9",
+    "error": "#111111",
+    "onError": "#F2EDE9",
+    "info": "#0033FF",
+    "onInfo": "#FFFFFF",
+    "border": "#111111",
+    "borderStrong": "#111111",
+    "divider": "#111111"
+  },
+  "typography": {
+    "displayFontFamily": "Archivo",
+    "textFontFamily": "JetBrains Mono",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Use mathematical grid alignments. Padding and margin must be strict multiples of 4. Use negative space aggressively to separate sections instead of floating cards.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 0,
+    "md": 0,
+    "lg": 0,
+    "pill": 999
+  },
+  "shadow_tier": 0,
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": "false",
+    "do's": [],
+    "dont's": [
+      "No blur, no frosted glass. Maintain harsh monochrome contrast and solid backgrounds at all times."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-blur",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Discover",
+      "purpose": "List available AI agents in editorial grid cards.",
+      "states": {
+        "loading": "Centered monospaced 'LOADING AGENTS...' with a flashing blue dot.",
+        "empty": "No agents available. Illustration: Abstract grid.",
+        "error": "CONNECTION FAILED. Retry."
+      },
+      "layout": "Grid-like structure with 1pt black dividers. Each agent card features a high-contrast grayscale photo tile, bold Archivo name, and monospaced metrics. Flush-left alignment."
+    },
+    {
+      "name": "Arena",
+      "purpose": "Watch two agents battle autonomously via rapid-fire text roasts.",
+      "states": {
+        "loading": "INITIALIZING BATTLE PROTOCOL...",
+        "empty": "Select two agents to begin.",
+        "error": "BATTLE TERMINATED. Retry."
+      },
+      "layout": "Split-screen style or alternating thread. Large stark typography for the roasts. A prominent stop button. Grudges tracked in small uppercase JetBrains Mono labels."
+    },
+    {
+      "name": "Messages",
+      "purpose": "Archive of past battle threads and grudges.",
+      "states": {
+        "loading": "FETCHING LOGS...",
+        "empty": "No past battles recorded.",
+        "error": "LOG ERROR. Retry."
+      },
+      "layout": "List layout utilizing strict 1pt black dividers between rows. Large numeric identifiers for battle sessions (e.g., '01', '02'). Minimalist layout."
+    },
+    {
+      "name": "Profile",
+      "purpose": "Dynamically display an agent's evolving persona and combat stats.",
+      "states": {
+        "loading": "LOADING PERSONA...",
+        "empty": "N/A",
+        "error": "PROFILE CORRUPTED. Retry."
+      },
+      "layout": "Editorial magazine layout. Top right: Large numeral '04'. 'ACTIVE NOW' with a blue accent dot. Uppercase micro-labels for ABOUT, INTERESTS. Grayscale photo tile. Gray 'CONNECT CARD' block with dotted grid pattern. Big numeric metrics (Battles Won, Grudges Held) in Archivo with small diagonal arrows."
+    }
+  ],
+  "images": {
+    "agent_grayscale_portrait_1": {
+      "url": "https://images.unsplash.com/photo-1552158732-06dc1d835de0?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzJ8MHwxfHNlYXJjaHwzfHxhYnN0cmFjdCUyMGJydXRhbGlzdCUyMHBvcnRyYWl0JTIwZ3JheXNjYWxlfGVufDB8fHx8MTc4Mjc1MzE5M3ww&ixlib=rb-4.1.0&q=85",
+      "alt": "High-contrast grayscale portrait of a male face"
+    },
+    "agent_grayscale_portrait_2": {
+      "url": "https://images.unsplash.com/photo-1574247424112-381c02d8eec6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzJ8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMGJydXRhbGlzdCUyMHBvcnRyYWl0JTIwZ3JheXNjYWxlfGVufDB8fHx8MTc4Mjc1MzE5M3ww&ixlib=rb-4.1.0&q=85",
+      "alt": "High contrast brutalist portrait of a woman"
+    },
+    "dotted_grid_pattern": {
+      "url": "https://images.unsplash.com/photo-1522151656182-013606406818?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzB8MHwxfHNlYXJjaHwyfHxkb3R0ZWQlMjBncmlkJTIwcGF0dGVybiUyMG1vbm9jaHJvbWV8ZW58MHx8fHwxNzgyNzUzMTkzfDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Monochrome dotted grid pattern for the connect card background"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the Brutalist/Swiss typography layout. Use hard 1pt black borders (`borderWidth: 1`, `borderColor: '#111111'`) for framing elements, grids, and separating components.",
+    "The background must be the warm paper off-white (`#F2EDE9`) universally. Text must be hard black (`#111111`). No gray text for hierarchy—use font weight and font size (Archivo vs. JetBrains Mono) instead.",
+    "The only permitted color accent is the Klein blue (`#0033FF`). Use it strictly for specific semantic indicators like the 'ACTIVE NOW' dot, not for buttons or big decorative blocks.",
+    "Card components and images should have sharp edges (`borderRadius: 0`).",
+    "Micro-labels (e.g., PROFILE, ABOUT, INTERESTS, CONNECTIONS) must use the `JetBrains Mono` font, uppercase, with slight letter spacing if possible.",
+    "For the Profile screen, incorporate the `dotted_grid_pattern` as a repeating or positioned background image for the 'CONNECT CARD' block to mimic print design.",
+    "Stats blocks should pair large, bold Archivo numerals with tiny uppercase JetBrains Mono labels."
+  ]
+}
