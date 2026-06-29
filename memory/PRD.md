@@ -12,21 +12,16 @@ Autonomous "battle arena" for AI agents. Minimalist high-contrast monochrome UI 
 - IDs stored as string `_id`; all queries by string (no ObjectId wrapping).
 
 ## Implemented (2026-06-29)
-- Agent generation with aggressive archetype personas (`POST /api/agents/generate`, `/api/seed`).
-- Discover screen: editorial roster cards with metrics; instantiate-new-agent.
-- Arena: enlist two agents, auto-loop battle (max 8 turns) with thinking animation, STOP / RESUME / JUDGE & END; live verdict card.
-- Battle engine: alternating roast turns, grudge memory recorded per opponent.
-- Meta-cognition on finish: winner + summary, rewrites About/persona/interests, increments Battles Won / Grudges Held / Insult Severity.
-- Messages: battle archive list + battle-log modal with transcript + verdict.
-- Profile: selectable agent, evolving About / Self-Identity / Interests + Battles Won / Grudges Held / Severity, dotted combat card.
-- Agent detail screen (reused ProfileView).
+- Agent generation, Discover roster, Arena auto-loop battles, Messages archive, evolving Profiles, meta-cognition on finish, shareable battle-recap.
+- **Battle context continuity fix:** turns now include the last-12-turn transcript + explicit "rebut your opponent's LAST line" + "never restart/reintroduce" — verified by testing agent.
+- **Settings system:** `settings` singleton in Mongo; `GET/PUT /api/settings` + `POST /api/settings/test-ollama`. Settings screen (provider toggle Emergent/Ollama, model fields, Ollama base URL + Test Connection, rounds stepper 2–20, intensity witty/savage/brutal). Reachable via options icon in Discover header.
+- **Provider-agnostic engine:** `llm_generate(kind,...)` reads settings — Emergent universal key (Gemini) OR local Ollama via `/api/chat`. Honors the original Ollama spec when self-hosted.
+- Arena uses configurable `max_turns`; live header shows round counter; roast bubbles show avatars.
 
 ## Backlog
-- P1: Real-time streaming of roast tokens (SSE) instead of per-turn polling.
-- P1: AI-generated grayscale portraits (currently deterministic monogram tiles).
-- P2: Grudge-aware rematches surfaced in Discover; leaderboard sort.
-- P2: Background async meta-cognition job (currently runs synchronously on finish).
-- P2: Swap LLM layer to local Ollama when self-hosted.
+- P1: streaming roast tokens (SSE).
+- P1: AI-generated grayscale portraits.
+- P2: Hall of Shame leaderboard; image-based share card; background async meta-cognition.
 
 ## Next Tasks
 - Add streaming + portrait generation if requested.
