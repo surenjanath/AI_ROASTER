@@ -11,7 +11,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, Agent, Battle, Turn } from "@/src/api";
-import { COLORS, FONTS, SPACING, TYPE } from "@/src/theme";
+import { COLORS, FONTS, SPACING } from "@/src/theme";
 import { MicroLabel, Divider, Avatar } from "@/src/components";
 
 const MAX_TURNS = 8;
@@ -33,7 +33,7 @@ export default function Arena() {
     try {
       const list = await api.listAgents();
       setAgents(list);
-    } catch (e) {}
+    } catch {}
   }, []);
 
   useFocusEffect(
@@ -69,7 +69,7 @@ export default function Arena() {
         setTurns((prev) => [...prev, t]);
         count++;
         setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
-      } catch (e) {
+      } catch {
         break;
       }
       setThinking(false);
@@ -88,7 +88,7 @@ export default function Arena() {
       setTurns([]);
       setResult(null);
       runLoop(bt.id);
-    } catch (e) {}
+    } catch {}
   };
 
   const stop = () => {
@@ -104,7 +104,7 @@ export default function Arena() {
       const res = await api.finishBattle(battle.id);
       setResult(res);
       await load();
-    } catch (e) {}
+    } catch {}
     setFinishing(false);
   };
 
@@ -139,16 +139,15 @@ export default function Arena() {
         </View>
         <Slot agent={b} corner="02" alignRight />
       </View>
-      <Divider />
-
-      {!battle ? (
+      <Divider />      {!battle ? (
         <View style={{ flex: 1 }}>
           <View style={styles.pickHead}>
             <MicroLabel color={COLORS.mute}>TAP TO ENLIST TWO COMBATANTS</MicroLabel>
           </View>
           <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
-            {agents.map((ag) => {
+            {agents.map((ag, i) => {
               const sel = a?.id === ag.id || b?.id === ag.id;
+              const slot = a?.id === ag.id ? "01" : b?.id === ag.id ? "02" : null;
               return (
                 <Pressable
                   key={ag.id}
@@ -156,15 +155,25 @@ export default function Arena() {
                   onPress={() => pick(ag)}
                 >
                   <View style={[styles.pickRow, sel && styles.pickRowSel]}>
-                    <Avatar initials={ag.initials} size={44} />
+                    <Text style={[styles.pickIdx, sel && { color: COLORS.surface }]}>
+                      {String(i + 1).padStart(2, "0")}
+                    </Text>
+                    <Avatar initials={ag.initials} size={34} />
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.pickName}>{ag.name}</Text>
+                      <Text
+                        style={[styles.pickName, sel && { color: COLORS.surface }]}
+                        numberOfLines={1}
+                      >
+                        {ag.name}
+                      </Text>
                       <MicroLabel color={sel ? COLORS.surface : COLORS.mute}>
                         {ag.role}
                       </MicroLabel>
                     </View>
-                    {sel && (
-                      <Ionicons name="checkmark" size={20} color={COLORS.surface} />
+                    {slot && (
+                      <View style={styles.slotBadge}>
+                        <MicroLabel color={COLORS.ink}>{slot}</MicroLabel>
+                      </View>
                     )}
                   </View>
                   <Divider />
@@ -188,8 +197,8 @@ export default function Arena() {
             style={{ flex: 1 }}
             contentContainerStyle={{ padding: SPACING.lg, paddingBottom: 24 }}
           >
-            <MicroLabel color={COLORS.mute} style={{ marginBottom: 16 }}>
-              TOPIC // {battle.topic.toUpperCase()}
+            <MicroLabel color={COLORS.mute} style={{ marginBottom: 12 }}>
+              {`TOPIC · ${battle.topic.toUpperCase()}`}
             </MicroLabel>
             {turns.map((t, i) => {
               const isA = t.speaker_id === a?.id;
@@ -199,7 +208,7 @@ export default function Arena() {
                   style={[styles.bubble, isA ? styles.bubbleL : styles.bubbleR]}
                 >
                   <MicroLabel color={isA ? COLORS.ink : COLORS.blue}>
-                    {t.speaker_name} // SEV {t.severity}
+                    {`${t.speaker_name} · SEV ${t.severity}`}
                   </MicroLabel>
                   <Text style={styles.bubbleText}>{t.text}</Text>
                 </View>
@@ -286,10 +295,15 @@ function Slot({
     <View style={[styles.slot, alignRight && { alignItems: "flex-end" }]}>
       {agent ? (
         <>
-          <Avatar initials={agent.initials} size={52} />
-          <Text style={[styles.slotName, alignRight && { textAlign: "right" }]} numberOfLines={1}>
+          <Avatar initials={agent.initials} size={40} active={agent.active} />
+          <Text
+            style={[styles.slotName, alignRight && { textAlign: "right" }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
             {agent.name}
           </Text>
+          <MicroLabel color={COLORS.mute}>{corner}</MicroLabel>
         </>
       ) : (
         <>
@@ -315,92 +329,103 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.lg,
+    paddingVertical: SPACING.md,
   },
-  slot: { flex: 1, gap: 6 },
+  slot: { flex: 1, gap: 4 },
   emptySlot: {
-    width: 52,
-    height: 52,
+    width: 40,
+    height: 40,
     borderWidth: 1,
     borderColor: COLORS.border,
     borderStyle: "dashed",
     alignItems: "center",
     justifyContent: "center",
   },
-  slotCorner: { fontFamily: FONTS.mono, fontSize: 14, color: COLORS.mute },
+  slotCorner: { fontFamily: FONTS.mono, fontSize: 12, color: COLORS.mute },
   slotName: {
     fontFamily: FONTS.display,
     fontWeight: "900",
-    fontSize: 16,
+    fontSize: 14,
     color: COLORS.ink,
   },
-  vsMid: { width: 60, alignItems: "center" },
+  vsMid: { width: 44, alignItems: "center" },
   vs: {
     fontFamily: FONTS.display,
     fontWeight: "900",
-    fontSize: 28,
+    fontSize: 20,
     color: COLORS.ink,
   },
-  pickHead: { paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md },
+  pickHead: { paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm },
   pickRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: SPACING.md,
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
+    paddingVertical: SPACING.sm,
   },
   pickRowSel: { backgroundColor: COLORS.ink },
+  pickIdx: { fontFamily: FONTS.mono, fontSize: 11, color: COLORS.mute, width: 20 },
   pickName: {
     fontFamily: FONTS.display,
     fontWeight: "900",
-    fontSize: 18,
+    fontSize: 16,
     color: COLORS.ink,
+    letterSpacing: -0.3,
+  },
+  slotBadge: {
+    borderWidth: 1,
+    borderColor: COLORS.surface,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
   },
   cta: {
     backgroundColor: COLORS.ink,
-    margin: SPACING.lg,
-    paddingVertical: SPACING.lg,
+    marginHorizontal: SPACING.lg,
+    marginVertical: SPACING.md,
+    paddingVertical: SPACING.md,
     alignItems: "center",
   },
   ctaDisabled: { backgroundColor: COLORS.surfaceTertiary },
   bubble: {
     borderWidth: 1,
     borderColor: COLORS.border,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
-    maxWidth: "88%",
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    marginBottom: SPACING.sm,
+    maxWidth: "90%",
   },
   bubbleL: { alignSelf: "flex-start", backgroundColor: COLORS.surfaceSecondary },
   bubbleR: { alignSelf: "flex-end", backgroundColor: COLORS.surface },
   bubbleText: {
     fontFamily: FONTS.display,
     fontWeight: "700",
-    fontSize: TYPE.lg,
+    fontSize: 14,
     color: COLORS.ink,
-    marginTop: 6,
-    lineHeight: 22,
+    marginTop: 4,
+    lineHeight: 19,
+    letterSpacing: -0.2,
   },
-  thinking: { flexDirection: "row", alignItems: "center", marginVertical: 8 },
+  thinking: { flexDirection: "row", alignItems: "center", marginVertical: 6 },
   resultCard: {
     backgroundColor: COLORS.ink,
     padding: SPACING.lg,
-    marginTop: SPACING.md,
+    marginTop: SPACING.sm,
   },
   winnerName: {
     fontFamily: FONTS.display,
     fontWeight: "900",
-    fontSize: 36,
+    fontSize: 32,
     color: COLORS.surface,
     letterSpacing: -1,
     marginVertical: 4,
   },
   summary: {
     fontFamily: FONTS.mono,
-    fontSize: TYPE.base,
+    fontSize: 12,
     color: COLORS.surface,
-    lineHeight: 20,
+    lineHeight: 19,
   },
-  controls: { flexDirection: "row", padding: SPACING.lg, gap: SPACING.md },
+  controls: { flexDirection: "row", padding: SPACING.md, gap: SPACING.sm },
   stop: {
     flex: 1,
     flexDirection: "row",
