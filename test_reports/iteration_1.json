@@ -1,0 +1,51 @@
+{
+  "summary": "Backend + frontend tested. CRITICAL bug: agent _id is stored as a STRING (Pydantic default_factory=lambda: str(ObjectId())) but every lookup-by-id query uses ObjectId(agent_id), so GET/agents/{id}, POST /battles, POST /battles/{id}/turn and /finish all 404. 5/11 backend tests pass; everything that depends on fetching an agent by id fails. Frontend Discover renders correctly with 6 seeded agents and bottom-nav works, but tapping a card sticks on 'LOADING PERSONA...' (console shows 404).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/agents/{id}", "issue": "Always returns 404. Agents are inserted with _id as string (from str(ObjectId()) in default_factory + by_alias dump), but query uses ObjectId(agent_id). Verified in Mongo: type(doc['_id']) == str.", "priority": "CRITICAL"},
+      {"endpoint": "POST /api/battles", "issue": "Returns 404 'Agent not found' for any real agent id, same ObjectId vs string mismatch.", "priority": "CRITICAL"},
+      {"endpoint": "POST /api/battles/{id}/turn", "issue": "Will fail to load agents inside turn handler for the same reason (also calls ObjectId(speaker_id)).", "priority": "CRITICAL"},
+      {"endpoint": "POST /api/battles/{id}/finish", "issue": "Same root cause; will not be able to load A/B agents to judge/rewrite.", "priority": "CRITICAL"},
+      {"endpoint": "GET /api/battles/{id}", "issue": "Uses ObjectId(battle_id) too — battles are also stored with string _id, so individual battle fetch will 404.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/agents/generate", "issue": "Works (LLM returns valid JSON). interests trimmed to 4 OK."},
+      {"endpoint": "POST /api/seed", "issue": "Works; returned 6 agents on second run (idempotent only when count>=4)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "app/agent/[id].tsx", "issue": "Stuck on 'LOADING PERSONA...' because backend GET /api/agents/{id} returns 404 — no error UI fallback.", "testID": "agent-detail-loading", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Discover -> Agent profile", "issue": "404 from backend; UI never recovers (no error state).", "affected_testIDs": ["agent-card-*"]},
+      {"flow": "Arena -> START BATTLE", "issue": "Will fail at POST /api/battles due to same backend ObjectId bug (not retested after first failure)."}
+    ],
+    "design_issues": [
+      {"screen": "Discover", "issues": ["Renders cleanly with monochrome minimalist style, bottom nav works, touch targets look >= 44pt."]}
+    ],
+    "react_native_issues": [
+      {"component": "global", "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents' — non-blocking."}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_arena_api.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "FIX backend id mismatch. Recommended (smallest diff): change Agent and Battle default_factory to use ObjectId() (not str) so Mongo stores real ObjectIds; OR change every find_one({'_id': ObjectId(x)}) to find_one({'_id': x}) and stop calling ObjectId(). Be consistent across get_agent, create_battle, next_turn, finish_battle, get_battle, and the a_update/b_update lookups (a['_id'] is a string so winner_id == a['_id'] comparison still works once IDs are strings).",
+    "After fix, re-run /app/backend/tests/test_arena_api.py — it covers seed, list, get, create_battle, two turns, list, finish (with battles_total/grudges_held/winner increments verified), idempotent finish, 404, and /agents/generate.",
+    "Wipe stale agents created during this iteration before retest: db.agents.deleteMany({}); db.battles.deleteMany({}); db.memories.deleteMany({}) so seed re-creates a clean roster with the corrected id type.",
+    "Frontend: add an error state in app/agent/[id].tsx instead of perpetual 'LOADING PERSONA...'."
+  ],
+  "critical_code_review_comments": [
+    "server.py L47/L77: default_factory=lambda: str(ObjectId()) combined with alias '_id' + model_dump(by_alias=True) inserts string _id into Mongo — root cause of all lookup 404s.",
+    "server.py L385: winner_id is a string but a['_id'] may differ in type; the str() wrap on L396 covers B but A check on L385 uses direct equality first.",
+    "server.py L209: seed loop 'range(4 - count)' creates 0 when count>=4 but returns seeded:False — correct, just noting.",
+    "server.py is 422 lines — fine, but llm prompts could move to a prompts module."
+  ],
+  "updated_files": ["/app/backend/tests/test_arena_api.py", "/app/test_reports/iteration_1.json"],
+  "success_rate": {"backend": "45% (5/11)", "frontend": "Discover OK, profile/arena/messages blocked by backend bug"},
+  "seed_data_creation": "POST /api/seed populated 4-6 agents via LLM. No need to recreate manually.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "After main agent fixes ObjectId/string id mismatch, just rerun: pytest /app/backend/tests/test_arena_api.py -v. Then re-test frontend Discover->Profile, Arena (select 2 agents, START BATTLE auto-loop, STOP, JUDGE & END), Messages list+modal, Profile tab.",
+  "rca_of_issue": "Pydantic model defines id = Field(default_factory=lambda: str(ObjectId()), alias='_id'). model_dump(by_alias=True) before insert_one stores _id as a STRING in MongoDB. All read paths then call find_one({'_id': ObjectId(agent_id)}) which queries for a BSON ObjectId — no document matches the string-stored _id, so every lookup-by-id returns 404. Reproduction: curl POST /api/seed then curl GET /api/agents/<id from list> -> 404. Mitigation: either (a) use ObjectId() (not str-wrapped) in default_factory so Mongo gets real ObjectIds, or (b) drop ObjectId() conversion at query sites and just query by string id throughout (consistent with the str type used for agent_a_id/agent_b_id in Battle model)."
+}

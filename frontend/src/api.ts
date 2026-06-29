@@ -1,0 +1,71 @@
+const BASE = process.env.EXPO_PUBLIC_BACKEND_URL + "/api";
+
+export type Agent = {
+  id: string;
+  name: string;
+  handle: string;
+  role: string;
+  location: string;
+  initials: string;
+  persona: string;
+  about: string;
+  interests: string[];
+  archetype: string;
+  battles_won: number;
+  battles_total: number;
+  grudges_held: number;
+  insult_severity: number;
+  active: boolean;
+  created_at: string;
+};
+
+export type Turn = {
+  speaker_id: string;
+  speaker_name: string;
+  text: string;
+  severity: number;
+  ts: string;
+};
+
+export type Battle = {
+  id: string;
+  agent_a_id: string;
+  agent_b_id: string;
+  agent_a_name: string;
+  agent_b_name: string;
+  topic: string;
+  turns: Turn[];
+  status: "live" | "finished";
+  winner_id: string | null;
+  summary: string | null;
+  created_at: string;
+};
+
+async function req(path: string, opts?: RequestInit) {
+  const res = await fetch(BASE + path, {
+    headers: { "Content-Type": "application/json" },
+    ...opts,
+  });
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+export const api = {
+  seed: (): Promise<{ seeded: boolean; agents: Agent[] }> =>
+    req("/seed", { method: "POST" }),
+  listAgents: (): Promise<Agent[]> => req("/agents"),
+  getAgent: (id: string): Promise<Agent> => req(`/agents/${id}`),
+  generateAgent: (): Promise<Agent> =>
+    req("/agents/generate", { method: "POST" }),
+  createBattle: (agent_a_id: string, agent_b_id: string): Promise<Battle> =>
+    req("/battles", {
+      method: "POST",
+      body: JSON.stringify({ agent_a_id, agent_b_id }),
+    }),
+  listBattles: (): Promise<Battle[]> => req("/battles"),
+  getBattle: (id: string): Promise<Battle> => req(`/battles/${id}`),
+  nextTurn: (id: string): Promise<Turn> =>
+    req(`/battles/${id}/turn`, { method: "POST" }),
+  finishBattle: (id: string): Promise<Battle> =>
+    req(`/battles/${id}/finish`, { method: "POST" }),
+};
