@@ -25,7 +25,7 @@ db = client[os.environ['DB_NAME']]
 
 EMERGENT_LLM_KEY = os.environ['EMERGENT_LLM_KEY']
 PRIMARY_PROVIDER, PRIMARY_MODEL = "gemini", "gemini-3-flash-preview"
-SECONDARY_PROVIDER, SECONDARY_MODEL = "gemini", "gemini-2.5-flash-lite"
+SECONDARY_PROVIDER, SECONDARY_MODEL = "gemini", "gemini-2.5-flash"
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -186,7 +186,7 @@ async def list_agents():
 
 @api_router.get("/agents/{agent_id}")
 async def get_agent(agent_id: str):
-    doc = await db.agents.find_one({"_id": ObjectId(agent_id)})
+    doc = await db.agents.find_one({"_id": agent_id})
     if not doc:
         raise HTTPException(404, "Agent not found")
     return clean(doc)
@@ -224,8 +224,8 @@ class BattleCreate(BaseModel):
 
 @api_router.post("/battles")
 async def create_battle(body: BattleCreate):
-    a = await db.agents.find_one({"_id": ObjectId(body.agent_a_id)})
-    b = await db.agents.find_one({"_id": ObjectId(body.agent_b_id)})
+    a = await db.agents.find_one({"_id": body.agent_a_id})
+    b = await db.agents.find_one({"_id": body.agent_b_id})
     if not a or not b:
         raise HTTPException(404, "Agent not found")
     topics = [
@@ -254,7 +254,7 @@ async def list_battles():
 
 @api_router.get("/battles/{battle_id}")
 async def get_battle(battle_id: str):
-    doc = await db.battles.find_one({"_id": ObjectId(battle_id)})
+    doc = await db.battles.find_one({"_id": battle_id})
     if not doc:
         raise HTTPException(404, "Battle not found")
     return clean(doc)
@@ -269,7 +269,7 @@ async def get_memories(agent_id: str, opponent_id: str) -> List[str]:
 
 @api_router.post("/battles/{battle_id}/turn")
 async def next_turn(battle_id: str):
-    battle = await db.battles.find_one({"_id": ObjectId(battle_id)})
+    battle = await db.battles.find_one({"_id": battle_id})
     if not battle:
         raise HTTPException(404, "Battle not found")
     if battle["status"] == "finished":
@@ -282,8 +282,8 @@ async def next_turn(battle_id: str):
     else:
         speaker_id, opp_id = battle["agent_b_id"], battle["agent_a_id"]
 
-    speaker = await db.agents.find_one({"_id": ObjectId(speaker_id)})
-    opponent = await db.agents.find_one({"_id": ObjectId(opp_id)})
+    speaker = await db.agents.find_one({"_id": speaker_id})
+    opponent = await db.agents.find_one({"_id": opp_id})
 
     memories = await get_memories(speaker_id, opp_id)
     mem_txt = ("Past grudges you remember about them: " + "; ".join(memories)) if memories else "No prior history with them."
@@ -315,7 +315,7 @@ async def next_turn(battle_id: str):
                       text=text, severity=severity)
 
     await db.battles.update_one(
-        {"_id": ObjectId(battle_id)},
+        {"_id": battle_id},
         {"$push": {"turns": turn.model_dump()}},
     )
     # store as memory for grudges
@@ -328,7 +328,7 @@ async def next_turn(battle_id: str):
 
 @api_router.post("/battles/{battle_id}/finish")
 async def finish_battle(battle_id: str):
-    battle = await db.battles.find_one({"_id": ObjectId(battle_id)})
+    battle = await db.battles.find_one({"_id": battle_id})
     if not battle:
         raise HTTPException(404, "Battle not found")
     if battle["status"] == "finished":
@@ -336,8 +336,8 @@ async def finish_battle(battle_id: str):
     if len(battle["turns"]) < 2:
         raise HTTPException(400, "Not enough turns to judge")
 
-    a = await db.agents.find_one({"_id": ObjectId(battle["agent_a_id"])})
-    b = await db.agents.find_one({"_id": ObjectId(battle["agent_b_id"])})
+    a = await db.agents.find_one({"_id": battle["agent_a_id"]})
+    b = await db.agents.find_one({"_id": battle["agent_b_id"]})
     transcript = "\n".join(f"{t['speaker_name']}: {t['text']}" for t in battle["turns"])
 
     # Meta-cognition (secondary model): judge + rewrite identities
@@ -373,7 +373,7 @@ async def finish_battle(battle_id: str):
     avg_sev = int(sum(t["severity"] for t in battle["turns"]) / max(1, len(battle["turns"])))
 
     await db.battles.update_one(
-        {"_id": ObjectId(battle_id)},
+        {"_id": battle_id},
         {"$set": {"status": "finished", "winner_id": winner_id,
                   "summary": data.get("summary", "")}},
     )
@@ -401,7 +401,7 @@ async def finish_battle(battle_id: str):
         b_update["interests"] = [str(i) for i in data.get("b_interests", b["interests"])][:4]
     await db.agents.update_one({"_id": b["_id"]}, {"$set": b_update})
 
-    doc = await db.battles.find_one({"_id": ObjectId(battle_id)})
+    doc = await db.battles.find_one({"_id": battle_id})
     return clean(doc)
 
 
