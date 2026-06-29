@@ -12,7 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, Agent } from "@/src/api";
-import { COLORS, FONTS, SPACING, TYPE } from "@/src/theme";
+import { COLORS, FONTS, SPACING } from "@/src/theme";
 import { MicroLabel, Divider, Avatar } from "@/src/components";
 
 export default function Discover() {
@@ -84,9 +84,9 @@ export default function Discover() {
           }
         >
           <View style={styles.titleBlock}>
-            <Text style={styles.bigTitle}>THE{"\n"}ROSTER</Text>
+            <Text style={styles.bigTitle}>THE ROSTER</Text>
             <Text style={styles.subtitle}>
-              {agents.length} hostile agents. Pick your poison in the Arena.
+              {agents.length} hostile agents · tap to inspect · enlist in the arena
             </Text>
           </View>
           <Divider />
@@ -98,16 +98,15 @@ export default function Discover() {
               onPress={() => router.push(`/agent/${a.id}`)}
             >
               <View style={styles.row}>
-                <Avatar initials={a.initials} size={72} active={a.active} />
+                <Avatar initials={a.initials} size={56} active={a.active} />
                 <View style={styles.rowBody}>
                   <View style={styles.rowTop}>
-                    <Text style={styles.idx}>{String(i + 1).padStart(2, "0")}</Text>
-                    <Ionicons name="arrow-forward" size={16} color={COLORS.ink} />
+                    <Text style={styles.idx}>{String(i + 1).padStart(2, "0")} / {a.role}</Text>
+                    <Ionicons name="arrow-forward" size={15} color={COLORS.ink} />
                   </View>
-                  <Text style={styles.name} numberOfLines={1}>
+                  <Text style={styles.name} numberOfLines={1} adjustsFontSizeToFit>
                     {a.name}
                   </Text>
-                  <MicroLabel color={COLORS.mute}>{a.role}</MicroLabel>
                   <View style={styles.metricRow}>
                     <View style={styles.metric}>
                       <Text style={styles.metricNum}>
@@ -171,26 +170,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 12,
   },
-  titleBlock: { paddingHorizontal: SPACING.lg, paddingVertical: SPACING.xl },
+  titleBlock: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg, paddingBottom: SPACING.lg },
   bigTitle: {
     fontFamily: FONTS.display,
     fontWeight: "900",
-    fontSize: 52,
-    lineHeight: 50,
+    fontSize: 40,
+    lineHeight: 40,
     color: COLORS.ink,
     letterSpacing: -2,
   },
   subtitle: {
     fontFamily: FONTS.mono,
-    fontSize: TYPE.base,
-    color: COLORS.ink,
-    marginTop: SPACING.md,
-    maxWidth: "85%",
+    fontSize: 11,
+    color: COLORS.mute,
+    marginTop: SPACING.sm,
+    letterSpacing: 0.3,
   },
   row: {
     flexDirection: "row",
-    padding: SPACING.lg,
-    gap: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    gap: SPACING.md,
+    alignItems: "center",
   },
   rowBody: { flex: 1 },
   rowTop: {
@@ -198,21 +199,21 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  idx: { fontFamily: FONTS.mono, fontSize: 11, color: COLORS.mute },
+  idx: { fontFamily: FONTS.mono, fontSize: 10, color: COLORS.mute, letterSpacing: 1, textTransform: "uppercase", flex: 1 },
   name: {
     fontFamily: FONTS.display,
     fontWeight: "900",
-    fontSize: 26,
+    fontSize: 22,
     color: COLORS.ink,
     letterSpacing: -1,
     marginTop: 2,
   },
-  metricRow: { flexDirection: "row", gap: SPACING.xl, marginTop: SPACING.md },
+  metricRow: { flexDirection: "row", gap: SPACING.xl, marginTop: SPACING.sm },
   metric: {},
   metricNum: {
     fontFamily: FONTS.display,
     fontWeight: "900",
-    fontSize: 18,
+    fontSize: 16,
     color: COLORS.ink,
   },
   generate: {
@@ -220,7 +221,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: COLORS.ink,
-    margin: SPACING.lg,
-    paddingVertical: SPACING.lg,
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.lg,
+    paddingVertical: SPACING.md,
   },
 });

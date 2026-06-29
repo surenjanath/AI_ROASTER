@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Agent } from "@/src/api";
-import { COLORS, FONTS, SPACING, TYPE } from "@/src/theme";
+import { COLORS, FONTS, SPACING } from "@/src/theme";
 import { MicroLabel, Divider, Avatar } from "@/src/components";
 
 function DotGrid() {
@@ -53,32 +53,32 @@ export default function ProfileView({
 
       {/* Hero */}
       <View style={styles.hero}>
-        <View style={styles.heroLeft}>
-          <Avatar initials={agent.initials} size={150} />
-          <Text style={styles.name} numberOfLines={2}>
-            {agent.name}
-          </Text>
-          <MicroLabel color={COLORS.mute}>{agent.role}</MicroLabel>
-          <View style={styles.locRow}>
-            <Text style={styles.loc}>{agent.location}</Text>
-            <Ionicons name="arrow-forward" size={13} color={COLORS.ink} />
+        <View style={styles.heroTop}>
+          <Avatar initials={agent.initials} size={104} active={agent.active} />
+          <View style={styles.heroRight}>
+            <Text style={styles.bigNum}>{agent.insult_severity}</Text>
+            <MicroLabel color={COLORS.mute} style={{ textAlign: "right" }}>
+              SEVERITY
+            </MicroLabel>
+            <View style={styles.activeRow}>
+              <View
+                style={[
+                  styles.activeDot,
+                  { backgroundColor: agent.active ? COLORS.blue : COLORS.mute },
+                ]}
+              />
+              <MicroLabel>{agent.active ? "ACTIVE NOW" : "OFFLINE"}</MicroLabel>
+            </View>
+            <Text style={styles.handle}>{agent.handle}</Text>
           </View>
         </View>
-        <View style={styles.heroRight}>
-          <Text style={styles.bigNum}>{agent.insult_severity}</Text>
-          <MicroLabel color={COLORS.mute} style={{ textAlign: "right" }}>
-            SEVERITY
-          </MicroLabel>
-          <View style={styles.activeRow}>
-            <View
-              style={[
-                styles.activeDot,
-                { backgroundColor: agent.active ? COLORS.blue : COLORS.mute },
-              ]}
-            />
-            <MicroLabel>{agent.active ? "ACTIVE NOW" : "OFFLINE"}</MicroLabel>
-          </View>
-          <Text style={styles.handle}>{agent.handle}</Text>
+        <Text style={styles.name} numberOfLines={2} adjustsFontSizeToFit>
+          {agent.name}
+        </Text>
+        <View style={styles.locRow}>
+          <MicroLabel color={COLORS.mute}>{agent.role}</MicroLabel>
+          <Text style={styles.dot8}>·</Text>
+          <Text style={styles.loc}>{agent.location}</Text>
         </View>
       </View>
       <Divider />
@@ -163,52 +163,57 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
   },
-  hero: { flexDirection: "row", padding: SPACING.lg, gap: SPACING.lg },
-  heroLeft: { flex: 1 },
+  hero: { padding: SPACING.lg },
+  heroTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
   name: {
     fontFamily: FONTS.display,
     fontWeight: "900",
-    fontSize: 34,
+    fontSize: 30,
     color: COLORS.ink,
     letterSpacing: -1.5,
     marginTop: SPACING.md,
   },
-  locRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8 },
-  loc: { fontFamily: FONTS.mono, fontSize: TYPE.base, color: COLORS.ink },
+  locRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 },
+  dot8: { fontFamily: FONTS.mono, color: COLORS.mute, fontSize: 12 },
+  loc: { fontFamily: FONTS.mono, fontSize: 12, color: COLORS.ink },
   heroRight: { alignItems: "flex-end", justifyContent: "flex-start" },
   bigNum: {
     fontFamily: FONTS.display,
     fontWeight: "900",
-    fontSize: 64,
+    fontSize: 50,
     color: COLORS.ink,
-    letterSpacing: -3,
-    lineHeight: 64,
+    letterSpacing: -2.5,
+    lineHeight: 50,
   },
-  activeRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: SPACING.xl },
-  activeDot: { width: 9, height: 9, borderRadius: 999 },
-  handle: { fontFamily: FONTS.mono, fontSize: TYPE.base, color: COLORS.mute, marginTop: 6 },
-  section: { paddingHorizontal: SPACING.lg, paddingVertical: SPACING.lg },
+  activeRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: SPACING.lg },
+  activeDot: { width: 8, height: 8, borderRadius: 999 },
+  handle: { fontFamily: FONTS.mono, fontSize: 12, color: COLORS.mute, marginTop: 6 },
+  section: { paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md },
   about: {
     fontFamily: FONTS.display,
     fontWeight: "700",
-    fontSize: 22,
+    fontSize: 18,
     color: COLORS.ink,
-    lineHeight: 30,
-    marginTop: SPACING.md,
-    letterSpacing: -0.5,
+    lineHeight: 25,
+    marginTop: SPACING.sm,
+    letterSpacing: -0.3,
   },
   persona: {
     fontFamily: FONTS.mono,
-    fontSize: TYPE.lg,
+    fontSize: 13,
     color: COLORS.ink,
-    lineHeight: 24,
-    marginTop: SPACING.md,
+    lineHeight: 21,
+    marginTop: SPACING.sm,
   },
-  interests: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.lg, marginTop: SPACING.md },
+  interests: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.lg, marginTop: SPACING.sm },
   interest: {
     fontFamily: FONTS.display,
     fontWeight: "700",
-    fontSize: TYPE.lg,
+    fontSize: 15,
     color: COLORS.ink,
   },
   connectCard: {
@@ -222,14 +227,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: SPACING.xl,
+    marginTop: SPACING.lg,
   },
   connectText: {
     fontFamily: FONTS.display,
     fontWeight: "700",
-    fontSize: 20,
+    fontSize: 18,
     color: COLORS.ink,
-    lineHeight: 26,
+    lineHeight: 24,
   },
   dotGrid: { gap: 4 },
   dotRow: { flexDirection: "row", gap: 4 },
@@ -238,16 +243,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginTop: SPACING.xl,
+    marginTop: SPACING.lg,
   },
-  metrics: { flexDirection: "row", paddingHorizontal: SPACING.lg, marginTop: SPACING.xl },
+  metrics: { flexDirection: "row", paddingHorizontal: SPACING.lg, marginTop: SPACING.lg },
   metricCell: { flex: 1 },
   metricDivider: { width: 1, backgroundColor: COLORS.border, marginHorizontal: SPACING.lg },
-  metricNumRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: SPACING.sm },
+  metricNumRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: SPACING.xs },
   metricNum: {
     fontFamily: FONTS.display,
     fontWeight: "900",
-    fontSize: 44,
+    fontSize: 36,
     color: COLORS.ink,
     letterSpacing: -2,
   },

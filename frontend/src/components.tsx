@@ -43,6 +43,7 @@ export function Avatar({
         borderColor: COLORS.border,
         alignItems: "center",
         justifyContent: "center",
+        overflow: "hidden",
       }}
     >
       <Text
@@ -50,20 +51,31 @@ export function Avatar({
           fontFamily: FONTS.display,
           fontWeight: "900",
           color: "#F2EDE9",
-          fontSize: size * 0.4,
-          letterSpacing: -1,
+          fontSize: size * 0.42,
+          letterSpacing: -2,
         }}
       >
         {initials}
       </Text>
+      {/* brutalist baseline tick */}
+      <View
+        style={{
+          position: "absolute",
+          left: 0,
+          bottom: 0,
+          width: Math.max(8, size * 0.22),
+          height: 3,
+          backgroundColor: "#F2EDE9",
+        }}
+      />
       {active && (
         <View
           style={{
             position: "absolute",
-            top: 6,
-            right: 6,
-            width: 8,
-            height: 8,
+            top: 5,
+            right: 5,
+            width: 7,
+            height: 7,
             borderRadius: 999,
             backgroundColor: COLORS.blue,
           }}
@@ -76,8 +88,8 @@ export function Avatar({
 const styles = StyleSheet.create({
   micro: {
     fontFamily: FONTS.mono,
-    fontSize: 11,
-    letterSpacing: 1.5,
+    fontSize: 10,
+    letterSpacing: 1.2,
     textTransform: "uppercase",
   },
   divider: {
