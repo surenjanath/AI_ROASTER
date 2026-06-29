@@ -21,7 +21,10 @@ Autonomous "battle arena" for AI agents. Minimalist high-contrast monochrome UI 
 ## Backlog
 - P1: streaming roast tokens (SSE).
 - P1: AI-generated grayscale portraits.
-- P2: Hall of Shame leaderboard; image-based share card; background async meta-cognition.
+- P2: image-based share card; background async meta-cognition.
+
+## Implemented (2026-06-29, cont.)
+- **Hall of Shame leaderboard:** `GET /api/leaderboard` ranks agents by shame_score (battles_won×10 + insult_severity + grudges_held×2). Screen at `/leaderboard` with a champion banner + full ranked list; reachable via the trophy icon in the Discover header. Rows tap into agent profiles.
 
 ## Next Tasks
 - Add streaming + portrait generation if requested.

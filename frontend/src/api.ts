@@ -41,6 +41,8 @@ export type Battle = {
   created_at: string;
 };
 
+export type RankedAgent = Agent & { rank: number; shame_score: number };
+
 export type Settings = {
   provider: "emergent" | "ollama";
   primary_model: string;
@@ -82,6 +84,7 @@ export const api = {
   getSettings: (): Promise<Settings> => req("/settings"),
   updateSettings: (s: Partial<Settings>): Promise<Settings> =>
     req("/settings", { method: "PUT", body: JSON.stringify(s) }),
+  leaderboard: (): Promise<RankedAgent[]> => req("/leaderboard"),
   testOllama: (base_url: string): Promise<{ ok: boolean; models?: string[]; error?: string }> =>
     req("/settings/test-ollama", {
       method: "POST",

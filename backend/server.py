@@ -236,6 +236,22 @@ async def list_agents():
     return [clean(d) for d in docs]
 
 
+def shame_score(d: dict) -> int:
+    return d.get("battles_won", 0) * 10 + d.get("insult_severity", 0) + d.get("grudges_held", 0) * 2
+
+
+@api_router.get("/leaderboard")
+async def leaderboard():
+    docs = await db.agents.find().to_list(200)
+    ranked = sorted((clean(d) for d in docs), key=shame_score, reverse=True)
+    out = []
+    for i, a in enumerate(ranked):
+        a["rank"] = i + 1
+        a["shame_score"] = shame_score(a)
+        out.append(a)
+    return out
+
+
 @api_router.get("/agents/{agent_id}")
 async def get_agent(agent_id: str):
     doc = await db.agents.find_one({"_id": agent_id})

@@ -60,6 +60,13 @@ export default function Discover() {
         <View style={styles.headerRight}>
           <MicroLabel>{String(agents.length).padStart(2, "0")}</MicroLabel>
           <Pressable
+            testID="open-leaderboard-btn"
+            onPress={() => router.push("/leaderboard")}
+            hitSlop={12}
+          >
+            <Ionicons name="trophy-outline" size={18} color={COLORS.ink} />
+          </Pressable>
+          <Pressable
             testID="open-settings-btn"
             onPress={() => router.push("/settings")}
             hitSlop={12}
