@@ -12,8 +12,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, Battle } from "@/src/api";
-import { COLORS, FONTS, SPACING, TYPE } from "@/src/theme";
+import { COLORS, FONTS, SPACING } from "@/src/theme";
 import { MicroLabel, Divider } from "@/src/components";
+import { shareBattle, winnerNameOf } from "@/src/share";
 
 export default function Messages() {
   const [battles, setBattles] = useState<Battle[]>([]);
@@ -24,7 +25,7 @@ export default function Messages() {
     try {
       const list = await api.listBattles();
       setBattles(list);
-    } catch (e) {}
+    } catch {}
     setLoading(false);
   }, []);
 
@@ -105,8 +106,8 @@ export default function Messages() {
               <Text style={styles.threadTitle}>
                 {open.agent_a_name} × {open.agent_b_name}
               </Text>
-              <MicroLabel color={COLORS.mute} style={{ marginTop: 6, marginBottom: 16 }}>
-                TOPIC // {open.topic.toUpperCase()}
+              <MicroLabel color={COLORS.mute} style={{ marginTop: 6, marginBottom: 12 }}>
+                {`TOPIC · ${open.topic.toUpperCase()}`}
               </MicroLabel>
               {open.turns.map((t, i) => {
                 const isA = t.speaker_id === open.agent_a_id;
@@ -116,7 +117,7 @@ export default function Messages() {
                     style={[styles.bubble, isA ? styles.bubbleL : styles.bubbleR]}
                   >
                     <MicroLabel color={isA ? COLORS.ink : COLORS.blue}>
-                      {t.speaker_name} // SEV {t.severity}
+                      {`${t.speaker_name} · SEV ${t.severity}`}
                     </MicroLabel>
                     <Text style={styles.bubbleText}>{t.text}</Text>
                   </View>
@@ -124,8 +125,20 @@ export default function Messages() {
               })}
               {open.summary && (
                 <View style={styles.verdict}>
-                  <MicroLabel color={COLORS.surface}>VERDICT</MicroLabel>
+                  <View style={styles.verdictTop}>
+                    <MicroLabel color={COLORS.surface}>{`VERDICT · ${winnerNameOf(open)} WINS`}</MicroLabel>
+                  </View>
                   <Text style={styles.summary}>{open.summary}</Text>
+                  <Pressable
+                    testID="share-battle-btn"
+                    style={styles.shareBtn}
+                    onPress={() => shareBattle(open)}
+                  >
+                    <Ionicons name="share-outline" size={15} color={COLORS.ink} />
+                    <MicroLabel color={COLORS.ink} style={{ marginLeft: 8 }}>
+                      SHARE RESULT
+                    </MicroLabel>
+                  </Pressable>
                 </View>
               )}
             </ScrollView>
@@ -143,64 +156,76 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
   },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   emptyBig: {
     fontFamily: FONTS.display,
     fontWeight: "900",
-    fontSize: 48,
+    fontSize: 40,
     color: COLORS.ink,
     textAlign: "center",
     letterSpacing: -2,
-    lineHeight: 46,
+    lineHeight: 38,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: SPACING.lg,
-    padding: SPACING.lg,
+    gap: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
   },
-  idx: { fontFamily: FONTS.mono, fontSize: 13, color: COLORS.mute, width: 24 },
+  idx: { fontFamily: FONTS.mono, fontSize: 11, color: COLORS.mute, width: 20 },
   matchup: {
     fontFamily: FONTS.display,
     fontWeight: "900",
-    fontSize: 20,
+    fontSize: 18,
     color: COLORS.ink,
     letterSpacing: -0.5,
   },
   vs: { color: COLORS.blue },
-  metaRow: { flexDirection: "row", gap: SPACING.lg, marginTop: 6 },
+  metaRow: { flexDirection: "row", gap: SPACING.lg, marginTop: 4 },
   threadTitle: {
     fontFamily: FONTS.display,
     fontWeight: "900",
-    fontSize: 28,
+    fontSize: 24,
     color: COLORS.ink,
     letterSpacing: -1,
   },
   bubble: {
     borderWidth: 1,
     borderColor: COLORS.border,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
-    maxWidth: "88%",
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    marginBottom: SPACING.sm,
+    maxWidth: "90%",
   },
   bubbleL: { alignSelf: "flex-start", backgroundColor: COLORS.surfaceSecondary },
   bubbleR: { alignSelf: "flex-end", backgroundColor: COLORS.surface },
   bubbleText: {
     fontFamily: FONTS.display,
     fontWeight: "700",
-    fontSize: TYPE.lg,
+    fontSize: 14,
     color: COLORS.ink,
-    marginTop: 6,
-    lineHeight: 22,
+    marginTop: 4,
+    lineHeight: 19,
+    letterSpacing: -0.2,
   },
-  verdict: { backgroundColor: COLORS.ink, padding: SPACING.lg, marginTop: SPACING.md },
+  verdict: { backgroundColor: COLORS.ink, padding: SPACING.lg, marginTop: SPACING.sm },
+  verdictTop: { flexDirection: "row", justifyContent: "space-between" },
   summary: {
     fontFamily: FONTS.mono,
-    fontSize: TYPE.base,
+    fontSize: 12,
     color: COLORS.surface,
-    lineHeight: 20,
+    lineHeight: 19,
     marginTop: 8,
+  },
+  shareBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.surface,
+    paddingVertical: SPACING.sm + 2,
+    marginTop: SPACING.md,
   },
 });

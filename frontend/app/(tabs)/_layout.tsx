@@ -72,7 +72,7 @@ const styles = StyleSheet.create({
   topBorder: { height: 1, backgroundColor: COLORS.border },
   bar: {
     flexDirection: "row",
-    paddingTop: 12,
+    paddingTop: 10,
     backgroundColor: COLORS.surface,
   },
   tab: { flex: 1, alignItems: "center", gap: 6 },

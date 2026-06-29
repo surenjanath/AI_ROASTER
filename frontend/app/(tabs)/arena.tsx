@@ -13,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { api, Agent, Battle, Turn } from "@/src/api";
 import { COLORS, FONTS, SPACING } from "@/src/theme";
 import { MicroLabel, Divider, Avatar } from "@/src/components";
+import { shareBattle } from "@/src/share";
 
 const MAX_TURNS = 8;
 
@@ -230,9 +231,19 @@ export default function Arena() {
                   WINS
                 </MicroLabel>
                 <Text style={styles.summary}>{result.summary}</Text>
-                <MicroLabel color={COLORS.surface} style={{ marginTop: 12, opacity: 0.7 }}>
+                <MicroLabel color={COLORS.surface} style={{ marginTop: 10, opacity: 0.7 }}>
                   PERSONAS REWRITTEN BY META-COGNITION
                 </MicroLabel>
+                <Pressable
+                  testID="share-result-btn"
+                  style={styles.shareBtn}
+                  onPress={() => shareBattle(result)}
+                >
+                  <Ionicons name="share-outline" size={15} color={COLORS.ink} />
+                  <MicroLabel color={COLORS.ink} style={{ marginLeft: 8 }}>
+                    SHARE RESULT
+                  </MicroLabel>
+                </Pressable>
               </View>
             )}
           </ScrollView>
@@ -323,7 +334,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
   },
   vsRow: {
     flexDirection: "row",
@@ -424,6 +435,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.surface,
     lineHeight: 19,
+  },
+  shareBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.surface,
+    paddingVertical: SPACING.sm + 2,
+    marginTop: SPACING.md,
   },
   controls: { flexDirection: "row", padding: SPACING.md, gap: SPACING.sm },
   stop: {
