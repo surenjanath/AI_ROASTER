@@ -20,7 +20,14 @@ export type Agent = {
   battles_total: number;
   grudges_held: number;
   insult_severity: number;
+  win_streak: number;
+  best_streak: number;
+  roast_techniques: string[];
+  avg_quality: number;
+  signature_move: string;
+  roast_dna: string;
   active: boolean;
+  owner_id: string;
   created_at: string;
 };
 
@@ -28,6 +35,11 @@ export type Turn = {
   speaker_id: string;
   speaker_name: string;
   text: string;
+  technique: string;
+  quality: number;
+  quality_label: string;
+  event_title: string;
+  event_desc: string;
   severity: number;
   ts: string;
 };
@@ -43,10 +55,27 @@ export type Battle = {
   status: "live" | "finished";
   winner_id: string | null;
   summary: string | null;
+  avg_quality: number;
+  top_technique: string;
+  event_count: number;
   created_at: string;
 };
 
-export type RankedAgent = Agent & { rank: number; shame_score: number };
+export type BattleStats = {
+  total_turns: number;
+  avg_quality: number;
+  top_technique: string;
+  event_count: number;
+  quality_breakdown: Record<string, number>;
+  highest_quality: number;
+  lowest_quality: number;
+};
+
+export type RankedAgent = Agent & {
+  rank: number;
+  shame_score: number;
+  shame_title: string;
+};
 
 export type Settings = {
   provider: "emergent" | "ollama";
@@ -56,7 +85,7 @@ export type Settings = {
   ollama_primary_model: string;
   ollama_secondary_model: string;
   max_turns: number;
-  intensity: "witty" | "savage" | "brutal";
+  intensity: "witty" | "savage" | "brutal" | "vulgar";
 };
 
 async function req(path: string, opts?: RequestInit) {
@@ -109,6 +138,8 @@ export const api = {
     req(`/battles/${id}/turn`, { method: "POST" }),
   finishBattle: (id: string): Promise<Battle> =>
     req(`/battles/${id}/finish`, { method: "POST" }),
+  getBattleStats: (id: string): Promise<BattleStats> =>
+    req(`/battles/${id}/stats`),
   getSettings: (): Promise<Settings> => req("/settings"),
   updateSettings: (s: Partial<Settings>): Promise<Settings> =>
     req("/settings", { method: "PUT", body: JSON.stringify(s) }),

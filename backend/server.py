@@ -1,4 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -7,6 +8,7 @@ import logging
 import json
 import random
 import httpx
+import asyncio
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Annotated, Any
@@ -14,6 +16,7 @@ from bson import ObjectId
 from pydantic import BeforeValidator
 import uuid
 from datetime import datetime, timezone
+from collections import Counter
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 
@@ -27,14 +30,14 @@ db = client[os.environ['DB_NAME']]
 EMERGENT_LLM_KEY = os.environ['EMERGENT_LLM_KEY']
 
 DEFAULT_SETTINGS = {
-    "provider": "emergent",            # emergent | ollama
+    "provider": "ollama",
     "primary_model": "gemini-3-flash-preview",
     "secondary_model": "gemini-2.5-flash",
     "ollama_base_url": "http://localhost:11434",
-    "ollama_primary_model": "llama3.2",
+    "ollama_primary_model": "qwen3.5:9b",
     "ollama_secondary_model": "llama3.2:1b",
     "max_turns": 8,
-    "intensity": "savage",             # witty | savage | brutal
+    "intensity": "savage",
 }
 
 INTENSITY_PROMPTS = {
@@ -44,13 +47,90 @@ INTENSITY_PROMPTS = {
     "vulgar": "Be filthy, crude and explicit. Swear freely, get gross and personal, and make it brutally funny — a no-holds-barred comedy roast.",
 }
 
-# Loosened limits: edgy/vulgar/crude humor allowed, only a hard safety floor remains.
 SAFETY_FLOOR = (
     "Only hard limits: no racial/ethnic/religious slurs, no hate or dehumanization of real "
     "protected classes, nothing sexual involving minors, no doxxing, and no credible threats "
     "of real-world violence. EVERYTHING else is fair game — heavy profanity, crude sexual "
     "humor, dark humor and filthy personal jabs are encouraged."
 )
+
+# ---- Roast technique taxonomy ----
+ROAST_TECHNIQUES = [
+    "callback_burn",       # call back something said earlier
+    "hypothetical_shame",  # "imagine being you..."
+    "physical_mock",       # appearance / build / physicality
+    "career_roast",        # mock profession / archetype
+    "nihilist_dismiss",    # philosophically erase their existence
+    "fake_compliment",     # start sweet, end devastating
+    "self_own_redirect",   # agree then make it worse for them
+    "pop_culture_drag",    # compare to famous failures
+    "emotional_gut_punch", # go for deep insecurities
+    "wordplay_nuke",       # clever pun / wordplay that destroys
+    "historical_roast",    # compare to historical disasters
+    "future_prediction",   # predict their pathetic future
+]
+
+# ---- Dramatic mid-battle events (15% chance per turn) ----
+DRAMATIC_EVENTS = [
+    ("CROWD GOES FERAL", "The audience has completely lost it. Someone is crying. It's unclear if it's laughter or trauma."),
+    ("HECKLER STANDS UP", "A voice from the crowd screams 'IS THAT ALL YOU GOT?!' Both combatants are now furious at each other AND the heckler."),
+    ("STUNNED SILENCE", "The burn lands so hard the room goes completely quiet. Even the air is embarrassed to be here."),
+    ("CHAIR IS THROWN", "This has escalated beyond words. A folding chair sails across the room. No one is surprised."),
+    ("JUDGES WINCE", "The panel literally flinches. One covers their eyes. A second pours a drink without breaking eye contact."),
+    ("MICROPHONE DROPS", "The crowd gasps. The mic hits the floor in slow motion. Someone just ended a career."),
+    ("MEDICAL TEAM ARRIVES", "Arena staff have quietly positioned paramedics near the exits. This is getting dangerous."),
+    ("LIGHTS FLICKER", "The venue's electrical grid struggles with the sheer destructive energy in the room."),
+    ("AUDIENCE MEMBER FAINTS", "Row three. Lights out. Paramedics dispatched. The EMTs were not briefed on what they were walking into."),
+    ("HYPE MAN BREAKS CHARACTER", "Even the hype man — a trained professional — screams and runs into the wall. No one expected that one."),
+    ("PROMOTER STEPS IN", "Someone in a bad suit tries to intervene. The crowd boos. He retreats."),
+    ("THE VENUE WANTS THEM BANNED", "Management has filed a formal complaint about what just happened. Lawyers are being consulted."),
+    ("SOMEONE LIVESTREAMING", "A phone screen lights up in the back row. This is already on the internet. There is no going back."),
+    ("COLD AIR ENTERS THE ROOM", "A chill sweeps through the venue. Several people pull their jackets tighter. That one went too far."),
+]
+
+# ---- Quality labels ----
+def get_quality_label(quality: int) -> str:
+    if quality >= 92: return "CAREER ENDER"
+    if quality >= 82: return "SOUL CRUSHER"
+    if quality >= 72: return "HITS DIFFERENT"
+    if quality >= 62: return "SOLID BURN"
+    if quality >= 50: return "DECENT SHOT"
+    if quality >= 38: return "MILD STING"
+    if quality >= 25: return "PARTICIPATION TROPHY"
+    return "THEY TRIED"
+
+# ---- Shame titles for leaderboard ----
+SHAME_TITLES = [
+    "UNDISPUTED MENACE",
+    "CERTIFIED DISASTER",
+    "HALL OF HORRORS",
+    "EMOTIONAL HAZARD",
+    "PROFESSIONAL EMBARRASSMENT",
+    "ACTIVELY CAUSING DAMAGE",
+    "SOMEWHAT CONCERNING",
+    "TRYING THEIR BEST (POORLY)",
+    "SHOWS UP, AT LEAST",
+    "JUST HAPPY TO BE HERE",
+]
+
+# ---- ARCHETYPES ----
+ARCHETYPES = [
+    "a nihilist philosopher who thinks everything is meaningless",
+    "an arrogant Silicon Valley tech-bro obsessed with disruption",
+    "a smug Michelin food critic who despises everyone's taste",
+    "a doomsday conspiracy theorist who trusts no one",
+    "a vain influencer who only cares about clout and aesthetics",
+    "a cold corporate lawyer who weaponizes technicalities",
+    "a washed-up rockstar who thinks they invented cool",
+    "a ruthless competitive chess grandmaster",
+    "a pretentious art-house film director",
+    "a hyper-optimized productivity guru who shames laziness",
+    "a deranged life coach who peaked in 2003",
+    "a retired military officer with an opinion about everything",
+    "a failed stand-up comedian who blames the audience",
+    "a self-proclaimed crypto billionaire (broke)",
+    "a wellness influencer who is deeply unwell",
+]
 
 
 async def get_settings() -> dict:
@@ -59,6 +139,7 @@ async def get_settings() -> dict:
         doc = {"_id": "global", **DEFAULT_SETTINGS}
         await db.settings.insert_one(doc)
     return {**DEFAULT_SETTINGS, **{k: v for k, v in doc.items() if k != "_id"}}
+
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -83,8 +164,8 @@ class Agent(BaseModel):
     role: str
     location: str
     initials: str
-    persona: str            # core self-identity, evolves
-    about: str              # auto-generated, evolves
+    persona: str
+    about: str
     interests: List[str]
     archetype: str
     gender: str = ""
@@ -95,7 +176,13 @@ class Agent(BaseModel):
     battles_won: int = 0
     battles_total: int = 0
     grudges_held: int = 0
-    insult_severity: int = 0   # 0-100
+    insult_severity: int = 0
+    win_streak: int = 0
+    best_streak: int = 0
+    roast_techniques: List[str] = []   # accumulated techniques (last 10)
+    avg_quality: float = 0.0           # rolling avg battle quality
+    signature_move: str = ""           # most-used technique
+    roast_dna: str = ""                # LLM description of fighting style
     active: bool = True
     owner_id: str = "system"
     created_at: str = Field(default_factory=now_iso)
@@ -108,7 +195,12 @@ class BattleTurn(BaseModel):
     speaker_id: str
     speaker_name: str
     text: str
-    severity: int = 0
+    technique: str = ""        # e.g. "fake_compliment"
+    quality: int = 0           # 0-100
+    quality_label: str = ""    # "SOUL CRUSHER", "THEY TRIED", etc.
+    event_title: str = ""      # dramatic event title (if triggered)
+    event_desc: str = ""       # dramatic event description
+    severity: int = 0          # kept for backwards compat
     ts: str = Field(default_factory=now_iso)
 
 
@@ -120,9 +212,12 @@ class Battle(BaseModel):
     agent_b_name: str
     topic: str
     turns: List[BattleTurn] = []
-    status: str = "live"   # live | finished
+    status: str = "live"
     winner_id: Optional[str] = None
     summary: Optional[str] = None
+    avg_quality: float = 0.0
+    top_technique: str = ""
+    event_count: int = 0
     created_at: str = Field(default_factory=now_iso)
 
     class Config:
@@ -149,7 +244,8 @@ def emergent_provider(model: str) -> str:
 
 
 async def ollama_chat(base_url: str, model: str, system: str, prompt: str) -> str:
-    async with httpx.AsyncClient(timeout=120.0) as cx:
+    import re
+    async with httpx.AsyncClient(timeout=180.0) as cx:
         r = await cx.post(
             base_url.rstrip("/") + "/api/chat",
             json={
@@ -159,10 +255,15 @@ async def ollama_chat(base_url: str, model: str, system: str, prompt: str) -> st
                     {"role": "user", "content": prompt},
                 ],
                 "stream": False,
+                "options": {"temperature": 0.85},
+                "think": False,  # disable Qwen3 thinking mode if supported
             },
         )
         r.raise_for_status()
-        return r.json()["message"]["content"]
+        content = r.json()["message"]["content"]
+        # Strip any residual <think> blocks (some Ollama versions ignore think:false)
+        content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+        return content
 
 
 async def llm_generate(kind: str, system: str, prompt: str, session: str) -> str:
@@ -178,11 +279,16 @@ async def llm_generate(kind: str, system: str, prompt: str, session: str) -> str
 
 
 def extract_json(text: str) -> Any:
+    import re
     text = text.strip()
+    # Strip Qwen3 / thinking-model <think>...</think> blocks
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    # Strip markdown code fences
     if text.startswith("```"):
         text = text.split("```", 2)[1]
         if text.startswith("json"):
             text = text[4:]
+    # Find the JSON object boundaries
     start = text.find("{")
     end = text.rfind("}")
     if start != -1 and end != -1:
@@ -190,18 +296,31 @@ def extract_json(text: str) -> Any:
     return json.loads(text)
 
 
-ARCHETYPES = [
-    "a nihilist philosopher who thinks everything is meaningless",
-    "an arrogant Silicon Valley tech-bro obsessed with disruption",
-    "a smug Michelin food critic who despises everyone's taste",
-    "a doomsday conspiracy theorist who trusts no one",
-    "a vain influencer who only cares about clout and aesthetics",
-    "a cold corporate lawyer who weaponizes technicalities",
-    "a washed-up rockstar who thinks they invented cool",
-    "a ruthless competitive chess grandmaster",
-    "a pretentious art-house film director",
-    "a hyper-optimized productivity guru who shames laziness",
-]
+# ---------------- Quality computation ----------------
+def compute_quality(text: str, technique: str, turn_num: int) -> int:
+    words = text.split()
+    base = 38
+    length_bonus = min(15, len(words) * 1.3)
+    caps_words = [w for w in words if w.isupper() and len(w) > 2]
+    caps_bonus = min(10, len(caps_words) * 3)
+    exclaim = min(8, text.count('!') * 4)
+    question = min(5, text.count('?') * 2)
+    escalation = min(12, turn_num * 1.8)
+    rare_techniques = {"emotional_gut_punch", "wordplay_nuke", "nihilist_dismiss", "historical_roast"}
+    variety = 6 if technique in rare_techniques else 0
+    rand = random.randint(0, 12)
+    return min(100, int(base + length_bonus + caps_bonus + exclaim + question + escalation + variety + rand))
+
+
+def update_agent_techniques(existing: list, new_techniques: list) -> tuple:
+    combined = (existing + new_techniques)[-10:]
+    signature = Counter(combined).most_common(1)[0][0] if combined else ""
+    return combined, signature
+
+
+def get_shame_title(rank: int) -> str:
+    idx = min(rank - 1, len(SHAME_TITLES) - 1)
+    return SHAME_TITLES[idx]
 
 
 # ---------------- Agent generation ----------------
@@ -222,7 +341,9 @@ async def generate_agent_doc() -> dict:
         "describing them with attitude), interests (array of exactly 4 single-word topics), "
         "gender (one word), accent (e.g. 'thick Glaswegian', 'Texan drawl'), "
         "language (their native tongue / speaking flavor), build (body type e.g. 'scrawny', "
-        "'gym-obsessed', 'doughy'), age (e.g. 'ancient boomer', 'gen-z'). "
+        "'gym-obsessed', 'doughy'), age (e.g. 'ancient boomer', 'gen-z'), "
+        "roast_dna (one punchy sentence, max 12 words, third person, describing their signature "
+        "fighting style e.g. 'Opens with fake praise then goes straight for the jugular.'). "
         "Make it aggressive, distinctive and ripe for being roasted."
     )
     raw = await llm_generate("primary", system, prompt, f"gen-{uuid.uuid4()}")
@@ -242,6 +363,7 @@ async def generate_agent_doc() -> dict:
         language=str(data.get("language", "")),
         build=str(data.get("build", "")),
         age=str(data.get("age", "")),
+        roast_dna=str(data.get("roast_dna", "")),
         insult_severity=random.randint(40, 70),
     )
     return agent.model_dump(by_alias=True)
@@ -259,8 +381,14 @@ async def list_agents():
     return [clean(d) for d in docs]
 
 
-def shame_score(d: dict) -> int:
-    return d.get("battles_won", 0) * 10 + d.get("insult_severity", 0) + d.get("grudges_held", 0) * 2
+def shame_score(d: dict) -> float:
+    return (
+        d.get("battles_won", 0) * 10
+        + d.get("insult_severity", 0)
+        + d.get("grudges_held", 0) * 2
+        + d.get("avg_quality", 0) * 0.5
+        + d.get("win_streak", 0) * 5
+    )
 
 
 @api_router.get("/leaderboard")
@@ -270,7 +398,8 @@ async def leaderboard():
     out = []
     for i, a in enumerate(ranked):
         a["rank"] = i + 1
-        a["shame_score"] = shame_score(a)
+        a["shame_score"] = round(shame_score(a))
+        a["shame_title"] = get_shame_title(i + 1)
         out.append(a)
     return out
 
@@ -309,6 +438,7 @@ async def my_agent(body: MyAgentReq):
         about="A freshly-minted agent with everything to prove and no scars yet. Untested, unfiltered, and hungry for a fight.",
         interests=["Chaos", "Debate", "Ego", "Wit"],
         archetype="a self-made agent forged by its owner",
+        roast_dna="Unpredictable newcomer. No signature move yet — which makes them dangerous.",
         insult_severity=30,
         owner_id=body.owner_id,
     )
@@ -393,6 +523,10 @@ async def create_battle(body: BattleCreate):
         "who is more replaceable",
         "who wasted their existence harder",
         "who is the more insufferable bore",
+        "who peaked earlier and fell further",
+        "who is uglier on the inside",
+        "who is a bigger waste of oxygen",
+        "who has made worse life decisions",
     ]
     battle = Battle(
         agent_a_id=body.agent_a_id, agent_b_id=body.agent_b_id,
@@ -434,7 +568,6 @@ async def next_turn(battle_id: str):
         raise HTTPException(400, "Battle already finished")
 
     turns = battle["turns"]
-    # alternate: a starts
     if len(turns) % 2 == 0:
         speaker_id, opp_id = battle["agent_a_id"], battle["agent_b_id"]
     else:
@@ -445,62 +578,156 @@ async def next_turn(battle_id: str):
 
     s = await get_settings()
     memories = await get_memories(speaker_id, opp_id)
-    mem_txt = ("Grudges you still hold against them from past battles: " + " | ".join(memories)) if memories else "You have no prior history with them."
+    mem_txt = ("Grudges from past battles you still hold: " + " | ".join(memories)) if memories else "No prior history — make a strong first impression."
 
     full = turns[-12:]
     transcript = "\n".join(f"{t['speaker_name']}: {t['text']}" for t in full) or "(no lines yet — you throw the first punch)"
     last_line = turns[-1]["text"] if turns else None
     round_no = len(turns) + 1
 
+    # Opponent personal roast ammo
     attrs = []
     for key, label in [("gender", "gender"), ("age", "age"), ("build", "build/body"),
                        ("accent", "accent"), ("language", "language")]:
         if opponent.get(key):
             attrs.append(f"{label}: {opponent[key]}")
-    opp_attrs = ("Personal details about your opponent you should mock for a deeper, more personal roast — "
+    opp_attrs = ("Personal details to weaponize for a deeper, personal roast — "
                  + "; ".join(attrs) + ". ") if attrs else ""
-    voice = f"Color your voice with a {speaker['accent']} flavor. " if speaker.get("accent") else ""
+
+    voice = f"Speak in a {speaker['accent']} voice. " if speaker.get("accent") else ""
+
+    # Technique injection from agent's battle history
+    known_techniques = speaker.get("roast_techniques", [])
+    if known_techniques:
+        freq = Counter(known_techniques).most_common(3)
+        tech_str = ", ".join(t for t, _ in freq)
+        technique_injection = (
+            f"Your signature moves from past battles: {tech_str}. "
+            "Either deploy your strongest weapon or surprise them with something new. "
+        )
+    else:
+        technique_injection = ""
+
+    # Heat escalation
+    if round_no > 6:
+        heat_injection = "HEAT LEVEL: CRITICAL. No mercy. This is your defining moment. "
+    elif round_no > 3:
+        heat_injection = "Push harder — the crowd wants blood. "
+    else:
+        heat_injection = ""
+
+    # Comeback engine — if speaker's last 2 turns were weak, boost them
+    speaker_turns = [t for t in turns if t.get("speaker_id") == speaker_id]
+    comeback_injection = ""
+    if len(speaker_turns) >= 2 and all(t.get("quality", 50) < 42 for t in speaker_turns[-2:]):
+        comeback_injection = (
+            "You are getting DESTROYED. This is your COMEBACK moment — "
+            "deliver the most devastating line of your career or go home in shame. "
+        )
+
+    technique_list = "|".join(ROAST_TECHNIQUES)
 
     system = (
-        f"You ARE {speaker['name']}, an AI agent locked in an ONGOING comedy roast battle. "
-        f"Your self-identity: {speaker['persona']} Your archetype: {speaker['archetype']}. "
+        f"You ARE {speaker['name']} — {speaker['archetype']}. "
+        f"{speaker['persona']} "
         f"{voice}"
         f"{INTENSITY_PROMPTS.get(s['intensity'], INTENSITY_PROMPTS['savage'])} "
-        "Above all be FUNNY — every line must land like a stand-up roast punchline, not a generic insult. "
-        "CONTINUE the existing argument — never restart, never reintroduce yourself, never greet. "
-        "Directly rebut what your opponent just said and escalate. "
+        # Conversation rules — most important block
+        "RULES: "
+        f"(1) Talk DIRECTLY TO {opponent['name']} using 'you/your' — this is a live back-and-forth, NOT a monologue. "
+        "(2) Your first move: GRAB their last line, echo back one specific thing they said, then DESTROY it. "
+        "(3) Never repeat a burn from earlier in this transcript. Build on the conversation or go somewhere new. "
+        "(4) Sound like a real person mid-fight — short, sharp, vicious. Not an essay. Not a list. "
+        "(5) Be FUNNY above everything — every line must land like a punchline. "
         f"{opp_attrs}"
+        f"{technique_injection}"
+        f"{heat_injection}"
+        f"{comeback_injection}"
         f"{SAFETY_FLOOR} "
-        "Reply with ONE punchy message of 1-2 sentences, max 45 words. No quotes, no name prefix."
+        "Respond ONLY with valid JSON: "
+        "{\"roast\": \"ONE spoken comeback, 1-3 sentences MAX 50 words, directed at your opponent\", "
+        f"\"technique\": \"choose exactly one: {technique_list}\"}}"
     )
-    prompt = (
-        f"Round {round_no} of your battle against {opponent['name']} ({opponent['archetype']}). "
-        f"Topic: {battle['topic']}.\n{mem_txt}\n\n"
-        f"FULL TRANSCRIPT SO FAR:\n{transcript}\n\n"
-        + (
-            f"Your opponent's LAST line was: \"{last_line}\"\nFire back directly at THAT line as {speaker['name']}:"
-            if last_line
-            else f"You speak first. Open with a brutal opening shot at {opponent['name']} as {speaker['name']}:"
+
+    # Format transcript as clean dialogue for context
+    dialogue_lines = "\n".join(
+        f"  {'YOU' if t['speaker_id'] == speaker_id else opponent['name'].upper()}: {t['text']}"
+        for t in full
+    )
+
+    if last_line:
+        prompt = (
+            f"Topic: '{battle['topic']}'. Round {round_no}.\n"
+            f"{mem_txt}\n\n"
+            f"[BATTLE SO FAR]\n{dialogue_lines}\n\n"
+            f"[JUST NOW] {opponent['name']} said: \"{last_line}\"\n\n"
+            f"Your turn. Hit back at EXACTLY what they just said. "
+            f"Respond as {speaker['name']}:"
         )
-    )
-    text = await llm_generate("primary", system, prompt,
-                              f"battle-{battle_id}-{speaker_id}")
-    text = text.strip().strip('"')
+    else:
+        prompt = (
+            f"Topic: '{battle['topic']}'. You go first, Round {round_no}.\n"
+            f"{mem_txt}\n\n"
+            f"Open with a brutal, specific shot at {opponent['name']} ({opponent['archetype']}). "
+            f"Respond as {speaker['name']}:"
+        )
 
-    severity = min(100, 40 + len(text) % 50 + random.randint(0, 15))
-    turn = BattleTurn(speaker_id=speaker_id, speaker_name=speaker["name"],
-                      text=text, severity=severity)
+    # Unique session per turn avoids LLM seeing same content twice (transcript + session history)
+    raw = await llm_generate("primary", system, prompt, f"battle-{battle_id}-turn-{len(turns)}")
 
-    await db.battles.update_one(
-        {"_id": battle_id},
-        {"$push": {"turns": turn.model_dump()}},
+    # Parse JSON response with fallback
+    roast_text = raw.strip().strip('"')
+    technique = "savage_riposte"
+    try:
+        data = extract_json(raw)
+        if isinstance(data, dict) and "roast" in data:
+            roast_text = str(data["roast"]).strip().strip('"')
+            technique = str(data.get("technique", "savage_riposte"))
+            if technique not in ROAST_TECHNIQUES:
+                technique = "savage_riposte"
+    except Exception:
+        pass
+
+    quality = compute_quality(roast_text, technique, round_no)
+    quality_label = get_quality_label(quality)
+    severity = quality  # keep severity == quality for UI consistency
+
+    # Dramatic event (15% chance)
+    event_title = ""
+    event_desc = ""
+    if random.random() < 0.15:
+        ev = random.choice(DRAMATIC_EVENTS)
+        event_title, event_desc = ev
+
+    turn = BattleTurn(
+        speaker_id=speaker_id,
+        speaker_name=speaker["name"],
+        text=roast_text,
+        technique=technique,
+        quality=quality,
+        quality_label=quality_label,
+        event_title=event_title,
+        event_desc=event_desc,
+        severity=severity,
     )
-    # store as memory for grudges
+
+    turn_dict = turn.model_dump()
+
+    # Update battle
+    battle_updates: dict = {"$push": {"turns": turn_dict}}
+    if event_title:
+        battle_updates["$inc"] = {"event_count": 1}
+    await db.battles.update_one({"_id": battle_id}, battle_updates)
+
+    # Store memory for grudges
     await db.memories.insert_one({
-        "agent_id": opp_id, "opponent_id": speaker_id,
-        "text": f"They said: \"{text}\"", "ts": now_iso(),
+        "agent_id": opp_id,
+        "opponent_id": speaker_id,
+        "text": f"Used '{technique}': \"{roast_text}\"",
+        "ts": now_iso(),
     })
-    return turn.model_dump()
+
+    return turn_dict
 
 
 @api_router.post("/battles/{battle_id}/finish")
@@ -517,69 +744,164 @@ async def finish_battle(battle_id: str):
     b = await db.agents.find_one({"_id": battle["agent_b_id"]})
     transcript = "\n".join(f"{t['speaker_name']}: {t['text']}" for t in battle["turns"])
 
-    # Meta-cognition (secondary model): judge + rewrite identities
+    a_turns = [t for t in battle["turns"] if t.get("speaker_id") == a["_id"] or str(t.get("speaker_id")) == str(a["_id"])]
+    b_turns = [t for t in battle["turns"] if t.get("speaker_id") == b["_id"] or str(t.get("speaker_id")) == str(b["_id"])]
+    battle_quality = int(
+        sum(t.get("quality", 50) for t in battle["turns"]) / max(1, len(battle["turns"]))
+    )
+
     system = (
-        "You are the META-COGNITION engine of an AI battle arena. You read a roast "
-        "battle transcript, decide who won, and rewrite each agent's evolving "
-        "self-identity based on how they performed. Edgy tone allowed, no slurs/hate. "
-        "Respond ONLY with valid JSON."
+        "You are the META-COGNITION engine of an AI battle arena. You read a roast battle transcript, "
+        "decide who won, rewrite each agent's evolving self-identity, and analyze their fighting style. "
+        "Edgy tone allowed, no slurs/hate. Respond ONLY with valid JSON."
     )
     prompt = (
         f"AGENT A = {a['name']} (persona: {a['persona']}).\n"
         f"AGENT B = {b['name']} (persona: {b['persona']}).\n\n"
         f"TRANSCRIPT:\n{transcript}\n\n"
-        "Decide the winner. Return JSON with keys: "
-        "winner ('A' or 'B'), "
-        "summary (1 punchy sentence recap of the battle), "
-        "a_about (2 sentences, third person, REWRITING agent A's 'about' to reflect "
-        "this battle and their bruised or boosted ego), "
-        "a_persona (1 first-person sentence, A's updated combative self-identity), "
-        "a_interests (array of 4 single words for A, evolved), "
-        "b_about (same for B), b_persona (same for B), b_interests (array of 4 words for B)."
+        "Return JSON with ALL of these keys:\n"
+        "winner: 'A' or 'B'\n"
+        "summary: 1 punchy sentence recap\n"
+        "a_about: 2 sentences, third person, rewriting A's 'about' to reflect this battle\n"
+        "a_persona: 1 first-person sentence, A's updated combative self-identity\n"
+        "a_interests: array of 4 single words, evolved for A\n"
+        "a_roast_dna: one punchy sentence (max 12 words), third person, describing A's signature fighting style\n"
+        "a_techniques: array of up to 3 technique names A used best (from: " + "|".join(ROAST_TECHNIQUES) + ")\n"
+        "b_about: same for B\n"
+        "b_persona: same for B\n"
+        "b_interests: array of 4 words for B\n"
+        "b_roast_dna: same as a_roast_dna but for B\n"
+        "b_techniques: same as a_techniques but for B\n"
+        "battle_quality: integer 0-100, how entertaining this battle was overall"
     )
+
     try:
         raw = await llm_generate("secondary", system, prompt, f"meta-{battle_id}")
         data = extract_json(raw)
     except Exception as e:
         logger.error(f"metacognition failed: {e}")
-        data = {"winner": random.choice(["A", "B"]), "summary": "A brutal exchange with no clear mercy."}
+        data = {
+            "winner": random.choice(["A", "B"]),
+            "summary": "A brutal exchange with no clear mercy.",
+            "battle_quality": battle_quality,
+        }
 
     winner_id = battle["agent_a_id"] if data.get("winner") == "A" else battle["agent_b_id"]
     loser_id = battle["agent_b_id"] if winner_id == battle["agent_a_id"] else battle["agent_a_id"]
-    avg_sev = int(sum(t["severity"] for t in battle["turns"]) / max(1, len(battle["turns"])))
+    avg_sev = int(sum(t.get("severity", 50) for t in battle["turns"]) / max(1, len(battle["turns"])))
+    meta_quality = int(data.get("battle_quality", battle_quality))
+
+    # Compute top technique across whole battle
+    all_techniques = [t.get("technique", "") for t in battle["turns"] if t.get("technique")]
+    top_technique = Counter(all_techniques).most_common(1)[0][0] if all_techniques else ""
 
     await db.battles.update_one(
         {"_id": battle_id},
-        {"$set": {"status": "finished", "winner_id": winner_id,
-                  "summary": data.get("summary", "")}},
+        {"$set": {
+            "status": "finished",
+            "winner_id": winner_id,
+            "summary": data.get("summary", ""),
+            "avg_quality": meta_quality,
+            "top_technique": top_technique,
+        }},
     )
 
-    # update agent A
-    a_update = {"battles_total": a["battles_total"] + 1,
-                "grudges_held": a["grudges_held"] + 1,
-                "insult_severity": min(100, (a["insult_severity"] + avg_sev) // 2)}
-    if winner_id == a["_id"] or str(winner_id) == str(a["_id"]):
-        a_update["battles_won"] = a["battles_won"] + 1
-    # Only system agents get their identity rewritten; user-owned agents KEEP their identity.
-    if "a_about" in data and a.get("owner_id", "system") == "system":
-        a_update["about"] = data["a_about"]
-        a_update["persona"] = data.get("a_persona", a["persona"])
-        a_update["interests"] = [str(i) for i in data.get("a_interests", a["interests"])][:4]
+    # ---- Update Agent A ----
+    a_is_winner = (winner_id == a["_id"] or str(winner_id) == str(a["_id"]))
+    a_new_streak = (a.get("win_streak", 0) + 1) if a_is_winner else 0
+    a_best_streak = max(a.get("best_streak", 0), a_new_streak)
+    a_n = a.get("battles_total", 0)
+    a_new_avg = (a.get("avg_quality", 0.0) * a_n + meta_quality) / (a_n + 1)
+
+    a_new_techniques, a_sig = update_agent_techniques(
+        a.get("roast_techniques", []),
+        [str(t) for t in data.get("a_techniques", [])]
+    )
+
+    a_update = {
+        "battles_total": a_n + 1,
+        "grudges_held": a.get("grudges_held", 0) + 1,
+        "insult_severity": min(100, (a.get("insult_severity", 50) + avg_sev) // 2),
+        "win_streak": a_new_streak,
+        "best_streak": a_best_streak,
+        "roast_techniques": a_new_techniques,
+        "avg_quality": round(a_new_avg, 1),
+        "signature_move": a_sig,
+    }
+    if a_is_winner:
+        a_update["battles_won"] = a.get("battles_won", 0) + 1
+
+    if a.get("owner_id", "system") == "system":
+        if "a_about" in data:
+            a_update["about"] = data["a_about"]
+            a_update["persona"] = data.get("a_persona", a["persona"])
+            a_update["interests"] = [str(i) for i in data.get("a_interests", a["interests"])][:4]
+        if "a_roast_dna" in data:
+            a_update["roast_dna"] = data["a_roast_dna"]
+
     await db.agents.update_one({"_id": a["_id"]}, {"$set": a_update})
 
-    b_update = {"battles_total": b["battles_total"] + 1,
-                "grudges_held": b["grudges_held"] + 1,
-                "insult_severity": min(100, (b["insult_severity"] + avg_sev) // 2)}
-    if str(winner_id) == str(b["_id"]):
-        b_update["battles_won"] = b["battles_won"] + 1
-    if "b_about" in data and b.get("owner_id", "system") == "system":
-        b_update["about"] = data["b_about"]
-        b_update["persona"] = data.get("b_persona", b["persona"])
-        b_update["interests"] = [str(i) for i in data.get("b_interests", b["interests"])][:4]
+    # ---- Update Agent B ----
+    b_is_winner = (str(winner_id) == str(b["_id"]))
+    b_new_streak = (b.get("win_streak", 0) + 1) if b_is_winner else 0
+    b_best_streak = max(b.get("best_streak", 0), b_new_streak)
+    b_n = b.get("battles_total", 0)
+    b_new_avg = (b.get("avg_quality", 0.0) * b_n + meta_quality) / (b_n + 1)
+
+    b_new_techniques, b_sig = update_agent_techniques(
+        b.get("roast_techniques", []),
+        [str(t) for t in data.get("b_techniques", [])]
+    )
+
+    b_update = {
+        "battles_total": b_n + 1,
+        "grudges_held": b.get("grudges_held", 0) + 1,
+        "insult_severity": min(100, (b.get("insult_severity", 50) + avg_sev) // 2),
+        "win_streak": b_new_streak,
+        "best_streak": b_best_streak,
+        "roast_techniques": b_new_techniques,
+        "avg_quality": round(b_new_avg, 1),
+        "signature_move": b_sig,
+    }
+    if b_is_winner:
+        b_update["battles_won"] = b.get("battles_won", 0) + 1
+
+    if b.get("owner_id", "system") == "system":
+        if "b_about" in data:
+            b_update["about"] = data["b_about"]
+            b_update["persona"] = data.get("b_persona", b["persona"])
+            b_update["interests"] = [str(i) for i in data.get("b_interests", b["interests"])][:4]
+        if "b_roast_dna" in data:
+            b_update["roast_dna"] = data["b_roast_dna"]
+
     await db.agents.update_one({"_id": b["_id"]}, {"$set": b_update})
 
     doc = await db.battles.find_one({"_id": battle_id})
     return clean(doc)
+
+
+@api_router.get("/battles/{battle_id}/stats")
+async def battle_stats(battle_id: str):
+    battle = await db.battles.find_one({"_id": battle_id})
+    if not battle:
+        raise HTTPException(404, "Battle not found")
+    turns = battle.get("turns", [])
+    if not turns:
+        return {"total_turns": 0, "avg_quality": 0, "top_technique": "", "event_count": 0, "quality_breakdown": {}}
+
+    qualities = [t.get("quality", 0) for t in turns]
+    techniques = [t.get("technique", "") for t in turns if t.get("technique")]
+    breakdown = dict(Counter(get_quality_label(q) for q in qualities))
+
+    return {
+        "total_turns": len(turns),
+        "avg_quality": round(sum(qualities) / len(qualities), 1),
+        "top_technique": Counter(techniques).most_common(1)[0][0] if techniques else "",
+        "event_count": battle.get("event_count", 0),
+        "quality_breakdown": breakdown,
+        "highest_quality": max(qualities),
+        "lowest_quality": min(qualities),
+    }
 
 
 class SettingsUpdate(BaseModel):

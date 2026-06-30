@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -12,7 +12,16 @@ import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, Agent, Battle, Turn } from "@/src/api";
 import { COLORS, FONTS, SPACING } from "@/src/theme";
-import { MicroLabel, Divider, Avatar } from "@/src/components";
+import {
+  MicroLabel,
+  Divider,
+  Avatar,
+  QualityBar,
+  TechniqueBadge,
+  EventCard,
+  CrowdReaction,
+  StreamingText,
+} from "@/src/components";
 import { shareBattle } from "@/src/share";
 import { getOwnerId } from "@/src/owner";
 
@@ -23,10 +32,48 @@ const TOPICS: { label: string; value?: string }[] = [
   { label: "WORSE TASTE", value: "who has worse taste" },
   { label: "BIGGER FRAUD", value: "who is the bigger fraud" },
   { label: "MORE PATHETIC", value: "whose worldview is more pathetic" },
-  { label: "BIGGER WASTE", value: "who is the bigger waste of carbon" },
+  { label: "BIGGER WASTE", value: "who is a bigger waste of oxygen" },
   { label: "UGLIER INSIDE", value: "who is uglier on the inside" },
   { label: "WHO PEAKED", value: "who peaked harder and fell further" },
+  { label: "WORST DECISIONS", value: "who has made worse life decisions" },
 ];
+
+// Crowd reactions by average quality tier
+const CROWD_REACTIONS: Record<string, string[]> = {
+  high: [
+    "THE AUDIENCE IS LOSING THEIR MINDS",
+    "SOMEONE IN THE CROWD HAS FAINTED",
+    "THE JUDGES ARE WINCING",
+    "EMERGENCY SERVICES ARE STANDING BY",
+    "THE BUILDING IS SHAKING",
+    "THREE PEOPLE HAVE ASKED TO LEAVE",
+  ],
+  mid: [
+    "THE CROWD IS ENGAGED",
+    "MURMURS FROM THE BACK ROW",
+    "THAT ONE LANDED — MOSTLY",
+    "THE AUDIENCE SHIFTS UNCOMFORTABLY",
+    "A FEW NERVOUS LAUGHS",
+    "THE TENSION IS RISING",
+  ],
+  low: [
+    "...AWKWARD SILENCE...",
+    "SOMEONE COUGHS",
+    "A TUMBLEWEED ROLLS PAST",
+    "THE SOUND OF ONE HAND NOT CLAPPING",
+    "SECURITY IS CONCERNED — ABOUT THE QUALITY",
+    "SOMEONE IN ROW THREE IS ASLEEP",
+  ],
+};
+
+function getCrowdReaction(turns: Turn[]): string {
+  if (turns.length < 3) return "";
+  const last3 = turns.slice(-3);
+  const avg = last3.reduce((s, t) => s + (t.quality || 50), 0) / 3;
+  const bucket = avg >= 68 ? "high" : avg >= 48 ? "mid" : "low";
+  const pool = CROWD_REACTIONS[bucket];
+  return pool[Math.floor(turns.length / 3) % pool.length];
+}
 
 export default function Arena() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -41,6 +88,7 @@ export default function Arena() {
   const [maxTurns, setMaxTurns] = useState(MAX_DEFAULT);
   const [ownerId, setOwnerId] = useState<string>("");
   const [topicIdx, setTopicIdx] = useState(0);
+  const [streamingIdx, setStreamingIdx] = useState<number | null>(null);
   const runRef = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -58,14 +106,9 @@ export default function Arena() {
   useFocusEffect(
     useCallback(() => {
       load();
+      return () => { runRef.current = false; };
     }, [load])
   );
-
-  useEffect(() => {
-    return () => {
-      runRef.current = false;
-    };
-  }, []);
 
   const pick = (agent: Agent) => {
     if (battle) return;
@@ -77,26 +120,31 @@ export default function Arena() {
     setB(null);
   };
 
-  const runLoop = async (battleId: string) => {
+  const runLoop = async (battleId: string, startCount: number = 0) => {
     runRef.current = true;
     setRunning(true);
-    let count = turns.length;
+    let count = startCount;
     while (runRef.current && count < maxTurns) {
       setThinking(true);
       try {
         const t = await api.nextTurn(battleId);
-        setTurns((prev) => [...prev, t]);
+        setTurns((prev) => {
+          const next = [...prev, t];
+          setStreamingIdx(next.length - 1);
+          return next;
+        });
         count++;
-        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
+        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
       } catch {
         break;
       }
       setThinking(false);
-      await new Promise((r) => setTimeout(r, 700));
+      await new Promise((r) => setTimeout(r, 900));
     }
     setThinking(false);
     setRunning(false);
     runRef.current = false;
+    setStreamingIdx(null);
   };
 
   const startBattle = async () => {
@@ -106,13 +154,15 @@ export default function Arena() {
       setBattle(bt);
       setTurns([]);
       setResult(null);
-      runLoop(bt.id);
+      setStreamingIdx(null);
+      runLoop(bt.id, 0);
     } catch {}
   };
 
   const stop = () => {
     runRef.current = false;
     setRunning(false);
+    setStreamingIdx(null);
   };
 
   const finish = async () => {
@@ -135,15 +185,26 @@ export default function Arena() {
     setA(null);
     setB(null);
     setRunning(false);
+    setStreamingIdx(null);
   };
 
   const winnerName =
     result?.winner_id === a?.id ? a?.name : result?.winner_id === b?.id ? b?.name : null;
 
+  const avgQuality = turns.length
+    ? Math.round(turns.reduce((s, t) => s + (t.quality || 0), 0) / turns.length)
+    : 0;
+
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
+      {/* Header */}
       <View style={styles.header}>
         <MicroLabel>ARENA</MicroLabel>
+        <View style={styles.headerCenter}>
+          {turns.length > 0 && !result && (
+            <HeatMeter quality={avgQuality} />
+          )}
+        </View>
         <MicroLabel color={running ? COLORS.blue : COLORS.mute}>
           {running
             ? `● LIVE · R${turns.length}/${maxTurns}`
@@ -219,6 +280,13 @@ export default function Arena() {
                             <MicroLabel color={sel ? COLORS.ink : COLORS.surface}>YOU</MicroLabel>
                           </View>
                         )}
+                        {ag.win_streak >= 3 && (
+                          <View style={styles.streakBadge}>
+                            <MicroLabel color={COLORS.surface} style={styles.streakText}>
+                              {`🔥 ${ag.win_streak}W`}
+                            </MicroLabel>
+                          </View>
+                        )}
                       </View>
                       <MicroLabel color={sel ? COLORS.surface : COLORS.mute}>
                         {ag.role}
@@ -254,24 +322,51 @@ export default function Arena() {
             <MicroLabel color={COLORS.mute} style={{ marginBottom: 12 }}>
               {`TOPIC · ${battle.topic.toUpperCase()}`}
             </MicroLabel>
+
             {turns.map((t, i) => {
               const isA = t.speaker_id === a?.id;
               const sp = isA ? a : b;
+              const isStreaming = i === streamingIdx;
+              const showCrowdAfter = (i + 1) % 3 === 0 && i < turns.length - 1;
+              const reaction = showCrowdAfter ? getCrowdReaction(turns.slice(0, i + 1)) : "";
+
               return (
-                <View
-                  key={i}
-                  style={[styles.bubble, isA ? styles.bubbleL : styles.bubbleR]}
-                >
-                  <View style={styles.bubbleHead}>
-                    {sp && <Avatar initials={sp.initials} size={20} />}
-                    <MicroLabel color={isA ? COLORS.ink : COLORS.blue}>
-                      {`${t.speaker_name} · SEV ${t.severity}`}
-                    </MicroLabel>
+                <View key={i}>
+                  <View style={[styles.bubble, isA ? styles.bubbleL : styles.bubbleR]}>
+                    <View style={styles.bubbleHead}>
+                      {sp && <Avatar initials={sp.initials} size={20} />}
+                      <MicroLabel color={isA ? COLORS.ink : COLORS.blue}>
+                        {`${t.speaker_name} · Q${t.quality || 0}`}
+                      </MicroLabel>
+                    </View>
+                    {isStreaming ? (
+                      <StreamingText
+                        text={t.text}
+                        style={styles.bubbleText}
+                        speed={14}
+                      />
+                    ) : (
+                      <Text style={styles.bubbleText}>{t.text}</Text>
+                    )}
+                    <TechniqueBadge technique={t.technique} />
+                    {t.quality > 0 && (
+                      <QualityBar quality={t.quality} label={t.quality_label || ""} />
+                    )}
                   </View>
-                  <Text style={styles.bubbleText}>{t.text}</Text>
+
+                  {/* Dramatic event card */}
+                  {t.event_title ? (
+                    <EventCard title={t.event_title} desc={t.event_desc} />
+                  ) : null}
+
+                  {/* Crowd reaction every 3 turns */}
+                  {showCrowdAfter && reaction ? (
+                    <CrowdReaction text={reaction} />
+                  ) : null}
                 </View>
               );
             })}
+
             {thinking && (
               <View style={styles.thinking}>
                 <ActivityIndicator color={COLORS.blue} size="small" />
@@ -280,6 +375,7 @@ export default function Arena() {
                 </MicroLabel>
               </View>
             )}
+
             {result && (
               <View style={styles.resultCard}>
                 <MicroLabel color={COLORS.surface}>VERDICT</MicroLabel>
@@ -288,7 +384,36 @@ export default function Arena() {
                   WINS
                 </MicroLabel>
                 <Text style={styles.summary}>{result.summary}</Text>
-                <MicroLabel color={COLORS.surface} style={{ marginTop: 10, opacity: 0.7 }}>
+
+                {/* Battle stats row */}
+                <View style={styles.statsRow}>
+                  <StatCell
+                    label="QUALITY"
+                    value={String(result.avg_quality || avgQuality)}
+                    light
+                  />
+                  <StatCell
+                    label="ROUNDS"
+                    value={String(turns.length)}
+                    light
+                  />
+                  <StatCell
+                    label="EVENTS"
+                    value={String(result.event_count || 0)}
+                    light
+                  />
+                </View>
+
+                {result.top_technique ? (
+                  <View style={styles.topTechRow}>
+                    <MicroLabel color={COLORS.mute} style={{ opacity: 0.7 }}>TOP MOVE · </MicroLabel>
+                    <MicroLabel color={COLORS.surface} style={{ opacity: 0.9 }}>
+                      {result.top_technique.replace(/_/g, " ").toUpperCase()}
+                    </MicroLabel>
+                  </View>
+                ) : null}
+
+                <MicroLabel color={COLORS.surface} style={{ marginTop: 10, opacity: 0.6 }}>
                   PERSONAS REWRITTEN BY META-COGNITION
                 </MicroLabel>
                 <Pressable
@@ -322,7 +447,7 @@ export default function Arena() {
                 <Pressable
                   testID="resume-btn"
                   style={styles.resume}
-                  onPress={() => battle && runLoop(battle.id)}
+                  onPress={() => battle && runLoop(battle.id, turns.length)}
                   disabled={turns.length >= maxTurns}
                 >
                   <MicroLabel>
@@ -349,6 +474,48 @@ export default function Arena() {
     </SafeAreaView>
   );
 }
+
+function HeatMeter({ quality }: { quality: number }) {
+  const label =
+    quality >= 80 ? "🔥 INFERNO" :
+    quality >= 65 ? "⚡ HOT" :
+    quality >= 50 ? "● WARM" :
+    "· COLD";
+  const color = quality >= 80 ? COLORS.blue : quality >= 65 ? COLORS.ink : COLORS.mute;
+  return (
+    <MicroLabel color={color} style={{ fontSize: 9, letterSpacing: 1 }}>
+      {label}
+    </MicroLabel>
+  );
+}
+
+function StatCell({
+  label,
+  value,
+  light,
+}: {
+  label: string;
+  value: string;
+  light?: boolean;
+}) {
+  const c = light ? COLORS.surface : COLORS.ink;
+  return (
+    <View style={statStyles.cell}>
+      <Text style={[statStyles.val, { color: c }]}>{value}</Text>
+      <MicroLabel color={light ? "rgba(242,237,233,0.6)" : COLORS.mute}>{label}</MicroLabel>
+    </View>
+  );
+}
+
+const statStyles = StyleSheet.create({
+  cell: { alignItems: "center" },
+  val: {
+    fontFamily: FONTS.display,
+    fontWeight: "900",
+    fontSize: 22,
+    letterSpacing: -1,
+  },
+});
 
 function Slot({
   agent,
@@ -390,9 +557,11 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm + 2,
   },
+  headerCenter: { flex: 1, alignItems: "center" },
   vsRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -444,6 +613,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
+  streakBadge: {
+    backgroundColor: "#1A1A1A",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  streakText: { fontSize: 8 },
   pickRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -480,11 +655,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     marginBottom: SPACING.sm,
-    maxWidth: "90%",
+    maxWidth: "92%",
   },
   bubbleL: { alignSelf: "flex-start", backgroundColor: COLORS.surfaceSecondary },
   bubbleR: { alignSelf: "flex-end", backgroundColor: COLORS.surface },
-  bubbleHead: { flexDirection: "row", alignItems: "center", gap: 6 },
+  bubbleHead: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 },
   bubbleText: {
     fontFamily: FONTS.display,
     fontWeight: "700",
@@ -513,6 +688,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.surface,
     lineHeight: 19,
+    marginBottom: SPACING.md,
+  },
+  statsRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingVertical: SPACING.md,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "#2A2A2A",
+    marginVertical: SPACING.sm,
+  },
+  topTechRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: SPACING.xs,
   },
   shareBtn: {
     flexDirection: "row",

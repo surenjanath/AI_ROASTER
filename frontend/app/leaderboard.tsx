@@ -27,9 +27,7 @@ export default function Leaderboard() {
         .then((d) => on && setAgents(d))
         .catch(() => {})
         .finally(() => on && setLoading(false));
-      return () => {
-        on = false;
-      };
+      return () => { on = false; };
     }, [])
   );
 
@@ -60,7 +58,10 @@ export default function Leaderboard() {
             >
               <View style={styles.champ}>
                 <View style={styles.champTop}>
-                  <MicroLabel color={COLORS.surface}>REIGNING MENACE</MicroLabel>
+                  <View>
+                    <MicroLabel color={COLORS.surface}>REIGNING MENACE</MicroLabel>
+                    <Text style={styles.champTitle}>{champ.shame_title}</Text>
+                  </View>
                   <Text style={styles.champRank}>01</Text>
                 </View>
                 <View style={styles.champBody}>
@@ -72,13 +73,16 @@ export default function Leaderboard() {
                     <MicroLabel color={COLORS.surface} style={{ opacity: 0.7 }}>
                       {champ.role}
                     </MicroLabel>
+                    {champ.roast_dna ? (
+                      <Text style={styles.champDna} numberOfLines={2}>{champ.roast_dna}</Text>
+                    ) : null}
                   </View>
                 </View>
                 <View style={styles.champStats}>
                   <Stat label="SHAME" value={champ.shame_score} light />
                   <Stat label="WON" value={champ.battles_won} light />
-                  <Stat label="GRUDGES" value={champ.grudges_held} light />
-                  <Stat label="SEVERITY" value={champ.insult_severity} light />
+                  <Stat label="STREAK" value={champ.win_streak} light />
+                  <Stat label="Q·AVG" value={Math.round(champ.avg_quality)} light />
                 </View>
               </View>
             </Pressable>
@@ -102,8 +106,11 @@ export default function Leaderboard() {
                   <Text style={styles.name} numberOfLines={1}>
                     {a.name}
                   </Text>
-                  <MicroLabel color={COLORS.mute}>
-                    {`${a.battles_won} WON · ${a.grudges_held} GRUDGES · SEV ${a.insult_severity}`}
+                  <MicroLabel color={COLORS.mute} style={{ fontSize: 8 }}>
+                    {a.shame_title}
+                  </MicroLabel>
+                  <MicroLabel color={COLORS.mute} style={{ marginTop: 2 }}>
+                    {`${a.battles_won}W · STK ${a.win_streak} · Q${Math.round(a.avg_quality)}`}
                   </MicroLabel>
                 </View>
                 <View style={styles.scoreWrap}>
@@ -140,7 +147,15 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm + 2,
   },
   champ: { backgroundColor: COLORS.ink, margin: SPACING.lg, padding: SPACING.lg },
-  champTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  champTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  champTitle: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    letterSpacing: 1.5,
+    color: COLORS.blue,
+    textTransform: "uppercase",
+    marginTop: 3,
+  },
   champRank: {
     fontFamily: FONTS.display,
     fontWeight: "900",
@@ -152,9 +167,16 @@ const styles = StyleSheet.create({
   champName: {
     fontFamily: FONTS.display,
     fontWeight: "900",
-    fontSize: 26,
+    fontSize: 24,
     color: COLORS.surface,
     letterSpacing: -1,
+  },
+  champDna: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: "rgba(242,237,233,0.55)",
+    marginTop: 4,
+    lineHeight: 15,
   },
   champStats: {
     flexDirection: "row",

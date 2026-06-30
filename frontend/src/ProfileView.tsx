@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Agent } from "@/src/api";
 import { COLORS, FONTS, SPACING } from "@/src/theme";
-import { MicroLabel, Divider, Avatar } from "@/src/components";
+import { MicroLabel, Divider, Avatar, TechChip } from "@/src/components";
 
 function DotGrid() {
   const dots = [];
@@ -19,6 +19,34 @@ function DotGrid() {
   }
   return <View style={styles.dotGrid}>{dots}</View>;
 }
+
+function QualityRing({ value }: { value: number }) {
+  const label =
+    value >= 80 ? "ELITE" :
+    value >= 65 ? "SHARP" :
+    value >= 50 ? "DECENT" :
+    value > 0 ? "WARMING UP" :
+    "UNTESTED";
+  const color = value >= 80 ? COLORS.blue : value >= 50 ? COLORS.ink : COLORS.mute;
+  return (
+    <View style={qrStyles.wrap}>
+      <Text style={[qrStyles.num, { color }]}>{value > 0 ? Math.round(value) : "–"}</Text>
+      <MicroLabel color={color} style={qrStyles.label}>{label}</MicroLabel>
+    </View>
+  );
+}
+
+const qrStyles = StyleSheet.create({
+  wrap: { alignItems: "center" },
+  num: {
+    fontFamily: FONTS.display,
+    fontWeight: "900",
+    fontSize: 32,
+    letterSpacing: -1.5,
+    lineHeight: 34,
+  },
+  label: { fontSize: 8, marginTop: 2 },
+});
 
 export default function ProfileView({
   agent,
@@ -37,6 +65,8 @@ export default function ProfileView({
   onEdit?: () => void;
   label?: string;
 }) {
+  const uniqueTechniques = [...new Set(agent.roast_techniques || [])].slice(0, 6);
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: COLORS.surface }}
@@ -93,8 +123,33 @@ export default function ProfileView({
           <Text style={styles.dot8}>·</Text>
           <Text style={styles.loc}>{agent.location}</Text>
         </View>
+
+        {/* Win streak badge */}
+        {(agent.win_streak ?? 0) >= 2 && (
+          <View style={styles.streakWrap}>
+            <MicroLabel color={COLORS.surface}>
+              {`🔥 ${agent.win_streak} WIN STREAK · BEST ${agent.best_streak}`}
+            </MicroLabel>
+          </View>
+        )}
       </View>
       <Divider />
+
+      {/* Roast DNA */}
+      {agent.roast_dna ? (
+        <View style={styles.dnaCard}>
+          <MicroLabel color={COLORS.mute}>ROAST DNA</MicroLabel>
+          <Text style={styles.dnaText}>"{agent.roast_dna}"</Text>
+          {agent.signature_move ? (
+            <View style={styles.sigRow}>
+              <MicroLabel color={COLORS.mute}>SIGNATURE MOVE · </MicroLabel>
+              <MicroLabel color={COLORS.ink}>
+                {agent.signature_move.replace(/_/g, " ").toUpperCase()}
+              </MicroLabel>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
 
       {/* About */}
       <View style={styles.section}>
@@ -105,7 +160,7 @@ export default function ProfileView({
       {/* Self-identity */}
       <View style={styles.section}>
         <MicroLabel color={COLORS.mute}>SELF-IDENTITY</MicroLabel>
-        <Text style={styles.persona}>“{agent.persona}”</Text>
+        <Text style={styles.persona}>"{agent.persona}"</Text>
       </View>
 
       {/* Interests */}
@@ -119,6 +174,18 @@ export default function ProfileView({
           ))}
         </View>
       </View>
+
+      {/* Roast techniques learned */}
+      {uniqueTechniques.length > 0 && (
+        <View style={styles.section}>
+          <MicroLabel color={COLORS.mute}>BATTLE TECHNIQUES LEARNED</MicroLabel>
+          <View style={styles.techRow}>
+            {uniqueTechniques.map((t, i) => (
+              <TechChip key={i} label={t} />
+            ))}
+          </View>
+        </View>
+      )}
 
       {/* Traits / roast ammo */}
       {(agent.gender || agent.age || agent.build || agent.accent || agent.language) ? (
@@ -143,11 +210,11 @@ export default function ProfileView({
         </View>
       ) : null}
 
-      {/* Connect card */}
+      {/* Combat card */}
       <View style={styles.connectCard}>
         <View style={styles.connectTop}>
           <MicroLabel color={COLORS.ink}>COMBAT CARD</MicroLabel>
-          <MicroLabel color={COLORS.ink}>01</MicroLabel>
+          <QualityRing value={agent.avg_quality ?? 0} />
         </View>
         <View style={styles.connectBody}>
           <Text style={styles.connectText}>
@@ -184,6 +251,16 @@ export default function ProfileView({
               {String(agent.grudges_held).padStart(2, "0")}
             </Text>
             <Ionicons name="arrow-forward" size={16} color={COLORS.ink} />
+          </View>
+        </View>
+        <View style={styles.metricDivider} />
+        <View style={styles.metricCell}>
+          <MicroLabel color={COLORS.mute}>BEST STREAK</MicroLabel>
+          <View style={styles.metricNumRow}>
+            <Text style={styles.metricNum}>
+              {String(agent.best_streak ?? 0).padStart(2, "0")}
+            </Text>
+            <Ionicons name="trophy-outline" size={16} color={COLORS.ink} />
           </View>
         </View>
       </View>
@@ -235,6 +312,30 @@ const styles = StyleSheet.create({
   activeRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: SPACING.lg },
   activeDot: { width: 8, height: 8, borderRadius: 999 },
   handle: { fontFamily: FONTS.mono, fontSize: 12, color: COLORS.mute, marginTop: 6 },
+  streakWrap: {
+    marginTop: SPACING.sm,
+    backgroundColor: COLORS.ink,
+    alignSelf: "flex-start",
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 5,
+  },
+  dnaCard: {
+    backgroundColor: COLORS.surfaceSecondary,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: COLORS.border,
+  },
+  dnaText: {
+    fontFamily: FONTS.mono,
+    fontSize: 12,
+    color: COLORS.ink,
+    lineHeight: 19,
+    marginTop: SPACING.sm,
+    fontStyle: "italic",
+  },
+  sigRow: { flexDirection: "row", alignItems: "center", marginTop: SPACING.sm },
   section: { paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md },
   about: {
     fontFamily: FONTS.display,
@@ -259,6 +360,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: COLORS.ink,
   },
+  techRow: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.sm, marginTop: SPACING.sm },
   traitGrid: { flexDirection: "row", flexWrap: "wrap", marginTop: SPACING.sm },
   traitCell: { width: "50%", paddingVertical: SPACING.sm, paddingRight: SPACING.md },
   traitVal: {
@@ -274,7 +376,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
     padding: SPACING.lg,
   },
-  connectTop: { flexDirection: "row", justifyContent: "space-between" },
+  connectTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   connectBody: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -299,12 +401,12 @@ const styles = StyleSheet.create({
   },
   metrics: { flexDirection: "row", paddingHorizontal: SPACING.lg, marginTop: SPACING.lg },
   metricCell: { flex: 1 },
-  metricDivider: { width: 1, backgroundColor: COLORS.border, marginHorizontal: SPACING.lg },
+  metricDivider: { width: 1, backgroundColor: COLORS.border, marginHorizontal: SPACING.md },
   metricNumRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: SPACING.xs },
   metricNum: {
     fontFamily: FONTS.display,
     fontWeight: "900",
-    fontSize: 36,
+    fontSize: 30,
     color: COLORS.ink,
     letterSpacing: -2,
   },
