@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { api, Agent, Battle, Turn } from "@/src/api";
+import { api, Agent, Battle, Turn, PreBattleTaunt, BattleHighlights } from "@/src/api";
 import { COLORS, FONTS, SPACING } from "@/src/theme";
 import {
   MicroLabel,
@@ -89,6 +89,9 @@ export default function Arena() {
   const [ownerId, setOwnerId] = useState<string>("");
   const [topicIdx, setTopicIdx] = useState(0);
   const [streamingIdx, setStreamingIdx] = useState<number | null>(null);
+  const [taunts, setTaunts] = useState<PreBattleTaunt | null>(null);
+  const [loadingTaunts, setLoadingTaunts] = useState(false);
+  const [highlights, setHighlights] = useState<BattleHighlights | null>(null);
   const runRef = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -155,6 +158,15 @@ export default function Arena() {
       setTurns([]);
       setResult(null);
       setStreamingIdx(null);
+      setTaunts(null);
+      setHighlights(null);
+      // Load pre-battle taunts then start
+      setLoadingTaunts(true);
+      try {
+        const t = await api.preBattleTaunt(bt.id);
+        setTaunts(t);
+      } catch {}
+      setLoadingTaunts(false);
       runLoop(bt.id, 0);
     } catch {}
   };
@@ -172,7 +184,8 @@ export default function Arena() {
     try {
       const res = await api.finishBattle(battle.id);
       setResult(res);
-      await load();
+      const [, hl] = await Promise.allSettled([load(), api.battleHighlights(battle.id)]);
+      if (hl.status === "fulfilled") setHighlights(hl.value);
     } catch {}
     setFinishing(false);
   };
@@ -182,6 +195,8 @@ export default function Arena() {
     setBattle(null);
     setTurns([]);
     setResult(null);
+    setTaunts(null);
+    setHighlights(null);
     setA(null);
     setB(null);
     setRunning(false);
@@ -323,33 +338,76 @@ export default function Arena() {
               {`TOPIC · ${battle.topic.toUpperCase()}`}
             </MicroLabel>
 
+            {/* Pre-battle taunts */}
+            {loadingTaunts && (
+              <View style={styles.tauntLoading}>
+                <ActivityIndicator color={COLORS.blue} size="small" />
+                <MicroLabel color={COLORS.mute} style={{ marginLeft: 8 }}>LOADING TRASH TALK...</MicroLabel>
+              </View>
+            )}
+            {taunts && (
+              <View style={styles.tauntsBlock}>
+                <MicroLabel color={COLORS.mute} style={{ marginBottom: 8 }}>PRE-FIGHT DECLARATIONS</MicroLabel>
+                <View style={[styles.tauntBubble, styles.tauntL]}>
+                  <MicroLabel color={COLORS.ink} style={{ marginBottom: 4 }}>{taunts.agent_a_name.toUpperCase()}</MicroLabel>
+                  <Text style={styles.tauntText}>{taunts.agent_a_taunt}</Text>
+                </View>
+                <View style={[styles.tauntBubble, styles.tauntR]}>
+                  <MicroLabel color={COLORS.blue} style={{ marginBottom: 4 }}>{taunts.agent_b_name.toUpperCase()}</MicroLabel>
+                  <Text style={styles.tauntText}>{taunts.agent_b_taunt}</Text>
+                </View>
+                <View style={styles.fightDivider}>
+                  <View style={styles.fightLine} />
+                  <MicroLabel color={COLORS.mute} style={{ marginHorizontal: 8 }}>BATTLE BEGINS</MicroLabel>
+                  <View style={styles.fightLine} />
+                </View>
+              </View>
+            )}
+
             {turns.map((t, i) => {
               const isA = t.speaker_id === a?.id;
               const sp = isA ? a : b;
               const isStreaming = i === streamingIdx;
-              const showCrowdAfter = (i + 1) % 3 === 0 && i < turns.length - 1;
-              const reaction = showCrowdAfter ? getCrowdReaction(turns.slice(0, i + 1)) : "";
+              const isOpener = t.turn_type === "opener";
+              // Crowd reaction every 3 roast turns (skip opener turns)
+              const roastIdx = turns.slice(0, i + 1).filter(x => x.turn_type !== "opener").length;
+              const showCrowdAfter = !isOpener && roastIdx % 3 === 0 && i < turns.length - 1;
+              const reaction = showCrowdAfter ? getCrowdReaction(turns.filter(x => x.turn_type !== "opener").slice(0, roastIdx)) : "";
+
+              // Insert the divider before the first roast turn
+              const isFirstRoast = !isOpener && (i === 0 || turns[i - 1]?.turn_type === "opener");
 
               return (
                 <View key={i}>
-                  <View style={[styles.bubble, isA ? styles.bubbleL : styles.bubbleR]}>
+                  {isFirstRoast && turns[0]?.turn_type === "opener" && (
+                    <View style={styles.fightDivider}>
+                      <View style={styles.fightLine} />
+                      <MicroLabel color={COLORS.mute} style={{ marginHorizontal: 8 }}>GLOVES OFF</MicroLabel>
+                      <View style={styles.fightLine} />
+                    </View>
+                  )}
+                  <View style={[
+                    styles.bubble,
+                    isA ? styles.bubbleL : styles.bubbleR,
+                    isOpener && styles.bubbleOpener,
+                  ]}>
                     <View style={styles.bubbleHead}>
                       {sp && <Avatar initials={sp.initials} size={20} />}
-                      <MicroLabel color={isA ? COLORS.ink : COLORS.blue}>
-                        {`${t.speaker_name} · Q${t.quality || 0}`}
+                      <MicroLabel color={isOpener ? COLORS.mute : (isA ? COLORS.ink : COLORS.blue)}>
+                        {isOpener ? `${t.speaker_name} · SMALL TALK` : `${t.speaker_name} · Q${t.quality || 0}`}
                       </MicroLabel>
                     </View>
                     {isStreaming ? (
                       <StreamingText
                         text={t.text}
-                        style={styles.bubbleText}
-                        speed={14}
+                        style={[styles.bubbleText, isOpener && styles.bubbleTextOpener]}
+                        speed={18}
                       />
                     ) : (
-                      <Text style={styles.bubbleText}>{t.text}</Text>
+                      <Text style={[styles.bubbleText, isOpener && styles.bubbleTextOpener]}>{t.text}</Text>
                     )}
-                    <TechniqueBadge technique={t.technique} />
-                    {t.quality > 0 && (
+                    {!isOpener && <TechniqueBadge technique={t.technique} />}
+                    {!isOpener && t.quality > 0 && (
                       <QualityBar quality={t.quality} label={t.quality_label || ""} />
                     )}
                   </View>
@@ -359,7 +417,7 @@ export default function Arena() {
                     <EventCard title={t.event_title} desc={t.event_desc} />
                   ) : null}
 
-                  {/* Crowd reaction every 3 turns */}
+                  {/* Crowd reaction every 3 roast turns */}
                   {showCrowdAfter && reaction ? (
                     <CrowdReaction text={reaction} />
                   ) : null}
@@ -371,7 +429,7 @@ export default function Arena() {
               <View style={styles.thinking}>
                 <ActivityIndicator color={COLORS.blue} size="small" />
                 <MicroLabel color={COLORS.mute} style={{ marginLeft: 8 }}>
-                  GENERATING INSULT...
+                  {turns.length < 2 ? "SIZING EACH OTHER UP..." : "GENERATING INSULT..."}
                 </MicroLabel>
               </View>
             )}
@@ -416,6 +474,27 @@ export default function Arena() {
                 <MicroLabel color={COLORS.surface} style={{ marginTop: 10, opacity: 0.6 }}>
                   PERSONAS REWRITTEN BY META-COGNITION
                 </MicroLabel>
+
+                {/* Battle highlights */}
+                {highlights && highlights.highlights.length > 0 && (
+                  <View style={styles.highlightsBlock}>
+                    <MicroLabel color={COLORS.surface} style={{ opacity: 0.5, marginBottom: SPACING.sm }}>
+                      TOP BURNS THIS BATTLE
+                    </MicroLabel>
+                    {highlights.highlights.map((h, i) => (
+                      <View key={i} style={styles.highlightRow}>
+                        <MicroLabel color="rgba(242,237,233,0.4)" style={{ width: 20 }}>#{h.rank}</MicroLabel>
+                        <View style={{ flex: 1 }}>
+                          <MicroLabel color="rgba(242,237,233,0.5)" style={{ marginBottom: 2 }}>
+                            {`${h.speaker_name} · Q${h.quality} · ${(h.quality_label || "").toUpperCase()}`}
+                          </MicroLabel>
+                          <Text style={styles.highlightText}>"{h.text}"</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
                 <Pressable
                   testID="share-result-btn"
                   style={styles.shareBtn}
@@ -659,6 +738,7 @@ const styles = StyleSheet.create({
   },
   bubbleL: { alignSelf: "flex-start", backgroundColor: COLORS.surfaceSecondary },
   bubbleR: { alignSelf: "flex-end", backgroundColor: COLORS.surface },
+  bubbleOpener: { borderStyle: "dashed", opacity: 0.85 },
   bubbleHead: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 },
   bubbleText: {
     fontFamily: FONTS.display,
@@ -669,6 +749,17 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     letterSpacing: -0.2,
   },
+  bubbleTextOpener: {
+    fontStyle: "italic",
+    fontWeight: "600",
+    color: COLORS.mute,
+  },
+  fightDivider: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: SPACING.md,
+  },
+  fightLine: { flex: 1, height: 1, backgroundColor: COLORS.border },
   thinking: { flexDirection: "row", alignItems: "center", marginVertical: 6 },
   resultCard: {
     backgroundColor: COLORS.ink,
@@ -711,6 +802,44 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     paddingVertical: SPACING.sm + 2,
     marginTop: SPACING.md,
+  },
+  tauntLoading: { flexDirection: "row", alignItems: "center", marginBottom: SPACING.md },
+  tauntsBlock: { marginBottom: SPACING.lg },
+  tauntBubble: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    maxWidth: "92%",
+  },
+  tauntL: { alignSelf: "flex-start", backgroundColor: COLORS.surfaceSecondary },
+  tauntR: { alignSelf: "flex-end", backgroundColor: COLORS.surface },
+  tauntText: {
+    fontFamily: FONTS.display,
+    fontWeight: "700",
+    fontSize: 13,
+    color: COLORS.ink,
+    lineHeight: 18,
+    fontStyle: "italic",
+  },
+  highlightsBlock: {
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderColor: "#2A2A2A",
+  },
+  highlightRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  highlightText: {
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    color: "rgba(242,237,233,0.8)",
+    lineHeight: 17,
+    fontStyle: "italic",
   },
   controls: { flexDirection: "row", padding: SPACING.md, gap: SPACING.sm },
   stop: {

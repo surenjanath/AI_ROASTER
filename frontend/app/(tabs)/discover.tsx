@@ -7,6 +7,7 @@ import {
   Pressable,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -53,6 +54,26 @@ export default function Discover() {
       await load();
     } catch (e) {}
     setGenerating(false);
+  };
+
+  const confirmDelete = (agent: Agent) => {
+    Alert.alert(
+      "DELETE AGENT",
+      `Erase ${agent.name} from existence permanently.`,
+      [
+        { text: "CANCEL", style: "cancel" },
+        {
+          text: "DELETE",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await api.deleteAgent(agent.id);
+              await load();
+            } catch {}
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -118,11 +139,20 @@ export default function Discover() {
                 <View style={styles.rowBody}>
                   <View style={styles.rowTop}>
                     <Text style={styles.idx}>{String(i + 1).padStart(2, "0")} / {a.role}</Text>
-                    <Ionicons name="arrow-forward" size={15} color={COLORS.ink} />
+                    <Pressable
+                      testID={`delete-agent-${a.id}`}
+                      onPress={() => confirmDelete(a)}
+                      hitSlop={12}
+                    >
+                      <Ionicons name="trash-outline" size={15} color={COLORS.mute} />
+                    </Pressable>
                   </View>
                   <Text style={styles.name} numberOfLines={1} adjustsFontSizeToFit>
                     {a.name}
                   </Text>
+                  {a.roast_dna ? (
+                    <Text style={styles.dna} numberOfLines={1}>{a.roast_dna}</Text>
+                  ) : null}
                   <View style={styles.metricRow}>
                     <View style={styles.metric}>
                       <Text style={styles.metricNum}>
@@ -140,6 +170,12 @@ export default function Discover() {
                       <Text style={styles.metricNum}>{a.insult_severity}</Text>
                       <MicroLabel color={COLORS.mute}>SEVERITY</MicroLabel>
                     </View>
+                    {a.avg_quality > 0 ? (
+                      <View style={styles.metric}>
+                        <Text style={styles.metricNum}>{Math.round(a.avg_quality)}</Text>
+                        <MicroLabel color={COLORS.mute}>AVG Q</MicroLabel>
+                      </View>
+                    ) : null}
                   </View>
                 </View>
               </View>
@@ -224,6 +260,13 @@ const styles = StyleSheet.create({
     color: COLORS.ink,
     letterSpacing: -1,
     marginTop: 2,
+  },
+  dna: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: COLORS.mute,
+    marginTop: 2,
+    fontStyle: "italic",
   },
   metricRow: { flexDirection: "row", gap: SPACING.xl, marginTop: SPACING.sm },
   metric: {},

@@ -216,6 +216,18 @@ export default function SettingsScreen() {
         <Divider />
 
         <View style={styles.section}>
+          <MicroLabel color={COLORS.mute}>APP</MicroLabel>
+          <Pressable
+            style={styles.aboutRow}
+            onPress={() => router.push("/about")}
+          >
+            <Text style={styles.aboutLabel}>ABOUT AGENT ARENA</Text>
+            <Ionicons name="arrow-forward" size={14} color={COLORS.mute} />
+          </Pressable>
+        </View>
+        <Divider />
+
+        <View style={styles.section}>
           <MicroLabel color={COLORS.mute}>INTENSITY</MicroLabel>
           <View style={styles.segment}>
             {INTENSITIES.map((it) => (
@@ -344,6 +356,22 @@ const styles = StyleSheet.create({
     fontSize: 28,
     color: COLORS.ink,
     letterSpacing: -1,
+  },
+  aboutRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    marginTop: SPACING.sm,
+  },
+  aboutLabel: {
+    fontFamily: FONTS.mono,
+    fontSize: 12,
+    color: COLORS.ink,
+    letterSpacing: 0.5,
   },
   footer: {
     borderTopWidth: 1,

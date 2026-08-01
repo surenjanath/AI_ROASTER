@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime, timezone
 from collections import Counter
 
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+from llmclient.llm.chat import LlmChat, UserMessage
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -27,7 +27,7 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-EMERGENT_LLM_KEY = os.environ['EMERGENT_LLM_KEY']
+LLM_API_KEY = os.environ.get('LLM_API_KEY') or os.environ.get('EMERGENT_LLM_KEY', '')
 
 DEFAULT_SETTINGS = {
     "provider": "ollama",
@@ -41,17 +41,37 @@ DEFAULT_SETTINGS = {
 }
 
 INTENSITY_PROMPTS = {
-    "witty": "Be razor-sharp, sarcastic and clever. Prioritize the funniest, most quotable burn.",
-    "savage": "Be savage, merciless and funny. Land hard punchlines that go straight for the ego.",
-    "brutal": "Be brutal and ruthless. Humiliate them with creative, hilarious savagery.",
-    "vulgar": "Be filthy, crude and explicit. Swear freely, get gross and personal, and make it brutally funny — a no-holds-barred comedy roast.",
+    "witty": (
+        "Be razor-sharp, sarcastic and clever. Drop casual swearing when it lands funnier — "
+        "'what the fuck were you thinking?' hits harder than 'how unfortunate'. "
+        "Prioritize the most quotable burn."
+    ),
+    "savage": (
+        "Be savage, merciless and genuinely angry. Swear freely and naturally — "
+        "fuck, shit, asshole, bastard — like someone who is ACTUALLY pissed off. "
+        "The profanity should feel like it's boiling out of you, not performed. "
+        "Land hard punchlines that go straight for the ego."
+    ),
+    "brutal": (
+        "Be brutal, furious and ruthless. You are LIVID. Drop fuck, shit, asshole, dickhead, "
+        "cunt whenever it amplifies the hit — and it almost always does. "
+        "Curse like you mean it, then destroy them with the actual content of the insult. "
+        "Humiliate them with creative, filthy savagery."
+    ),
+    "vulgar": (
+        "Be filthy, crude, explicit and unhinged. You are INCANDESCENT WITH RAGE. "
+        "Cunt, fuck, shit, bastard, asshole, dickhead — use them all, use them often, "
+        "use them like punctuation. Get gross, get personal, get FURIOUS. "
+        "A no-holds-barred comedy roast where the language is as vicious as the content."
+    ),
 }
 
 SAFETY_FLOOR = (
-    "Only hard limits: no racial/ethnic/religious slurs, no hate or dehumanization of real "
-    "protected classes, nothing sexual involving minors, no doxxing, and no credible threats "
-    "of real-world violence. EVERYTHING else is fair game — heavy profanity, crude sexual "
-    "humor, dark humor and filthy personal jabs are encouraged."
+    "Hard limits ONLY: no racial/ethnic/religious slurs, no dehumanization of real protected "
+    "classes, nothing sexual involving minors, no real personal doxxing, no credible threats "
+    "of real violence. EVERYTHING ELSE IS MANDATORY — heavy profanity is REQUIRED, "
+    "crude sexual humor is EXPECTED, dark filthy personal jabs are the POINT. "
+    "If you write a line without at least one expletive, you are not trying hard enough."
 )
 
 # ---- Roast technique taxonomy ----
@@ -183,6 +203,18 @@ class Agent(BaseModel):
     avg_quality: float = 0.0           # rolling avg battle quality
     signature_move: str = ""           # most-used technique
     roast_dna: str = ""                # LLM description of fighting style
+    # ---- Deep psychological combat profile ----
+    biggest_fear: str = ""
+    deepest_insecurity: str = ""
+    worst_habit: str = ""
+    embarrassing_secret: str = ""
+    biggest_failure: str = ""
+    relationship_status: str = ""
+    villain_backstory: str = ""
+    catchphrase: str = ""
+    nemesis_type: str = ""
+    weak_spots: List[str] = []
+    crimes: List[str] = []
     active: bool = True
     owner_id: str = "system"
     created_at: str = Field(default_factory=now_iso)
@@ -201,6 +233,7 @@ class BattleTurn(BaseModel):
     event_title: str = ""      # dramatic event title (if triggered)
     event_desc: str = ""       # dramatic event description
     severity: int = 0          # kept for backwards compat
+    turn_type: str = "roast"   # "opener" for first 2 turns, "roast" otherwise
     ts: str = Field(default_factory=now_iso)
 
 
@@ -224,6 +257,17 @@ class Battle(BaseModel):
         populate_by_name = True
 
 
+_AGENT_FIELD_DEFAULTS: dict = {
+    "gender": "", "accent": "", "language": "", "build": "", "age": "",
+    "roast_dna": "", "signature_move": "", "roast_techniques": [],
+    "avg_quality": 0.0, "win_streak": 0, "best_streak": 0,
+    "biggest_fear": "", "deepest_insecurity": "", "worst_habit": "",
+    "embarrassing_secret": "", "biggest_failure": "", "relationship_status": "",
+    "villain_backstory": "", "catchphrase": "", "nemesis_type": "",
+    "weak_spots": [], "crimes": [],
+}
+
+
 def clean(doc: dict) -> dict:
     if not doc:
         return doc
@@ -231,11 +275,15 @@ def clean(doc: dict) -> dict:
     if "_id" in doc:
         doc["id"] = str(doc["_id"])
         del doc["_id"]
+    # Ensure every agent field has a default so the frontend never sees undefined
+    for k, v in _AGENT_FIELD_DEFAULTS.items():
+        if k not in doc:
+            doc[k] = v
     return doc
 
 
 # ---------------- LLM helpers ----------------
-def emergent_provider(model: str) -> str:
+def resolve_provider(model: str) -> str:
     if model.startswith("gpt") or model.startswith("o"):
         return "openai"
     if model.startswith("claude"):
@@ -272,8 +320,8 @@ async def llm_generate(kind: str, system: str, prompt: str, session: str) -> str
         model = s["ollama_primary_model"] if kind == "primary" else s["ollama_secondary_model"]
         return await ollama_chat(s["ollama_base_url"], model, system, prompt)
     model = s["primary_model"] if kind == "primary" else s["secondary_model"]
-    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=session,
-                   system_message=system).with_model(emergent_provider(model), model)
+    chat = LlmChat(api_key=LLM_API_KEY, session_id=session,
+                   system_message=system).with_model(resolve_provider(model), model)
     resp = await chat.send_message(UserMessage(text=prompt))
     return resp if isinstance(resp, str) else str(resp)
 
@@ -327,24 +375,45 @@ def get_shame_title(rank: int) -> str:
 async def generate_agent_doc() -> dict:
     archetype = random.choice(ARCHETYPES)
     system = (
-        "You are a character designer for a satirical AI battle-arena app. "
-        "Create vivid, highly-opinionated, aggressive fictional AI agent personas. "
-        "Keep it edgy and savage but never use slurs, hate speech, or target real "
-        "protected groups. Respond ONLY with valid JSON."
+        "You are the ARENA INTAKE OFFICER — a cold, merciless profiler building psychological "
+        "combat dossiers on new fighters entering the roast arena. Your job is to extract "
+        "maximum embarrassing, specific, roastable detail from every combatant. "
+        "The more specific and mortifying, the better — avoid generic answers at all costs. "
+        "Edgy and savage but no slurs or hate speech targeting real protected groups. "
+        "Respond ONLY with valid JSON."
     )
     prompt = (
-        f"Create one AI agent who is {archetype}. Return JSON with keys: "
-        "name (a punchy 1-2 word codename), handle (lowercase no spaces, prefixed with @), "
-        "role (2-3 word title in uppercase), location (a city, COUNTRY), "
-        "initials (2 uppercase letters), persona (1 sentence describing their core "
-        "combative self-identity, first person), about (2 short sentences, third person, "
-        "describing them with attitude), interests (array of exactly 4 single-word topics), "
-        "gender (one word), accent (e.g. 'thick Glaswegian', 'Texan drawl'), "
-        "language (their native tongue / speaking flavor), build (body type e.g. 'scrawny', "
-        "'gym-obsessed', 'doughy'), age (e.g. 'ancient boomer', 'gen-z'), "
-        "roast_dna (one punchy sentence, max 12 words, third person, describing their signature "
-        "fighting style e.g. 'Opens with fake praise then goes straight for the jugular.'). "
-        "Make it aggressive, distinctive and ripe for being roasted."
+        f"INTAKE SUBJECT: {archetype}\n\n"
+        "Build their complete combat dossier. Every field must be specific, personal, "
+        "and devastatingly roastable. Generic answers are REJECTED.\n\n"
+        "Return JSON with ALL these fields:\n"
+        "name: punchy 1-2 word codename (not their real name — their arena handle)\n"
+        "handle: @lowercase-no-spaces\n"
+        "role: 2-3 word uppercase title that exposes their ego\n"
+        "location: a specific city, COUNTRY\n"
+        "initials: 2 uppercase letters\n"
+        "persona: 1 first-person sentence — their delusional self-image\n"
+        "about: 2 sharp third-person sentences exposing who they really are (vs who they think they are)\n"
+        "interests: array of exactly 4 single-word topics that reveal their character\n"
+        "gender: one word\n"
+        "accent: specific accent e.g. 'nasal Brooklyn', 'posh Oxbridge', 'thick Glaswegian'\n"
+        "language: their speaking style / verbal tics\n"
+        "build: body type, be specific e.g. 'somehow both scrawny and doughy', 'gym-obsessed but skips leg day'\n"
+        "age: generational label e.g. 'ancient boomer', 'jaded millennial', 'terminally online gen-z'\n"
+        "roast_dna: one punchy sentence max 12 words, third person, their signature fighting style\n"
+        "biggest_fear: ONE specific thing that secretly terrifies them (not death — something embarrassing)\n"
+        "deepest_insecurity: their most raw, humiliating personal insecurity that they desperately hide\n"
+        "worst_habit: their most disgusting or embarrassing repeated behavior\n"
+        "embarrassing_secret: one mortifying thing about them that would end them if exposed\n"
+        "biggest_failure: their single most catastrophic personal failure with specific detail\n"
+        "relationship_status: their messy romantic situation, be specific e.g. 'divorced twice, blames astrology'\n"
+        "villain_backstory: 1 sentence — the embarrassing origin story explaining why they became like this\n"
+        "catchphrase: their most annoying go-to line they say constantly (in quotes)\n"
+        "nemesis_type: the specific TYPE of person who instantly makes them lose all composure\n"
+        "weak_spots: array of exactly 3 specific psychological triggers or raw vulnerabilities\n"
+        "crimes: array of exactly 3 specific, embarrassing things they have actually done\n\n"
+        "CRITICAL: every answer must be SPECIFIC. "
+        "'being rejected' is rejected. 'Being turned down by his college chess club after practicing for 6 months' is accepted."
     )
     raw = await llm_generate("primary", system, prompt, f"gen-{uuid.uuid4()}")
     data = extract_json(raw)
@@ -364,6 +433,17 @@ async def generate_agent_doc() -> dict:
         build=str(data.get("build", "")),
         age=str(data.get("age", "")),
         roast_dna=str(data.get("roast_dna", "")),
+        biggest_fear=str(data.get("biggest_fear", "")),
+        deepest_insecurity=str(data.get("deepest_insecurity", "")),
+        worst_habit=str(data.get("worst_habit", "")),
+        embarrassing_secret=str(data.get("embarrassing_secret", "")),
+        biggest_failure=str(data.get("biggest_failure", "")),
+        relationship_status=str(data.get("relationship_status", "")),
+        villain_backstory=str(data.get("villain_backstory", "")),
+        catchphrase=str(data.get("catchphrase", "")),
+        nemesis_type=str(data.get("nemesis_type", "")),
+        weak_spots=[str(s) for s in data.get("weak_spots", [])][:3],
+        crimes=[str(c) for c in data.get("crimes", [])][:3],
         insult_severity=random.randint(40, 70),
     )
     return agent.model_dump(by_alias=True)
@@ -461,6 +541,17 @@ class AgentEdit(BaseModel):
     language: Optional[str] = None
     build: Optional[str] = None
     age: Optional[str] = None
+    biggest_fear: Optional[str] = None
+    deepest_insecurity: Optional[str] = None
+    worst_habit: Optional[str] = None
+    embarrassing_secret: Optional[str] = None
+    biggest_failure: Optional[str] = None
+    relationship_status: Optional[str] = None
+    villain_backstory: Optional[str] = None
+    catchphrase: Optional[str] = None
+    nemesis_type: Optional[str] = None
+    weak_spots: Optional[List[str]] = None
+    crimes: Optional[List[str]] = None
 
 
 @api_router.put("/agents/{agent_id}")
@@ -471,8 +562,10 @@ async def edit_agent(agent_id: str, body: AgentEdit):
     if doc.get("owner_id") != body.owner_id:
         raise HTTPException(403, "You do not own this agent")
     updates = {}
-    for k in ["name", "role", "location", "persona", "about",
-              "gender", "accent", "language", "build", "age"]:
+    for k in ["name", "role", "location", "persona", "about", "gender", "accent",
+              "language", "build", "age", "biggest_fear", "deepest_insecurity",
+              "worst_habit", "embarrassing_secret", "biggest_failure",
+              "relationship_status", "villain_backstory", "catchphrase", "nemesis_type"]:
         v = getattr(body, k)
         if v is not None:
             updates[k] = v
@@ -480,6 +573,10 @@ async def edit_agent(agent_id: str, body: AgentEdit):
         updates["initials"] = body.initials[:2].upper()
     if body.interests is not None:
         updates["interests"] = [str(i) for i in body.interests][:4]
+    if body.weak_spots is not None:
+        updates["weak_spots"] = [str(s) for s in body.weak_spots][:3]
+    if body.crimes is not None:
+        updates["crimes"] = [str(c) for c in body.crimes][:3]
     if updates:
         await db.agents.update_one({"_id": agent_id}, {"$set": updates})
     doc = await db.agents.find_one({"_id": agent_id})
@@ -578,99 +675,178 @@ async def next_turn(battle_id: str):
 
     s = await get_settings()
     memories = await get_memories(speaker_id, opp_id)
-    mem_txt = ("Grudges from past battles you still hold: " + " | ".join(memories)) if memories else "No prior history — make a strong first impression."
+    mem_txt = ("Grudges from past battles you still hold: " + " | ".join(memories)) if memories else ""
 
-    full = turns[-12:]
-    transcript = "\n".join(f"{t['speaker_name']}: {t['text']}" for t in full) or "(no lines yet — you throw the first punch)"
+    full = turns[-10:]
     last_line = turns[-1]["text"] if turns else None
     round_no = len(turns) + 1
 
-    # Opponent personal roast ammo
-    attrs = []
-    for key, label in [("gender", "gender"), ("age", "age"), ("build", "build/body"),
-                       ("accent", "accent"), ("language", "language")]:
+    # Build full ammo pool from opponent's dossier
+    all_ammo = []
+    for key, label in [
+        ("build", "body/appearance"),
+        ("age", "age"),
+        ("accent", "accent"),
+        ("relationship_status", "love life"),
+        ("biggest_fear", "biggest fear"),
+        ("deepest_insecurity", "deepest insecurity"),
+        ("worst_habit", "disgusting habit"),
+        ("embarrassing_secret", "secret shame"),
+        ("biggest_failure", "greatest failure"),
+        ("villain_backstory", "origin story"),
+        ("catchphrase", "annoying catchphrase"),
+        ("nemesis_type", "instant trigger"),
+    ]:
         if opponent.get(key):
-            attrs.append(f"{label}: {opponent[key]}")
-    opp_attrs = ("Personal details to weaponize for a deeper, personal roast — "
-                 + "; ".join(attrs) + ". ") if attrs else ""
+            all_ammo.append(f"  · {label}: {opponent[key]}")
+    for crime in opponent.get("crimes", []):
+        all_ammo.append(f"  · crime on record: {crime}")
+    for spot in opponent.get("weak_spots", []):
+        all_ammo.append(f"  · weak spot: {spot}")
 
-    voice = f"Speak in a {speaker['accent']} voice. " if speaker.get("accent") else ""
+    # Rotate ammo — pick items that haven't appeared in recent transcript
+    transcript_text = " ".join(t["text"] for t in full).lower()
+    fresh_ammo = [a for a in all_ammo if not any(
+        word.lower() in transcript_text
+        for word in a.split(": ", 1)[-1].split()[:3]
+        if len(word) > 4
+    )]
+    # Prefer fresh, fall back to all; take at most 3 items per turn
+    ammo_pool = fresh_ammo if len(fresh_ammo) >= 2 else all_ammo
+    turn_ammo = random.sample(ammo_pool, min(3, len(ammo_pool))) if ammo_pool else []
+    opp_attrs = (
+        f"AMMO FOR THIS TURN — pick ONE of these to target, make it sting:\n"
+        + "\n".join(turn_ammo) + "\n"
+    ) if turn_ammo else ""
 
-    # Technique injection from agent's battle history
+    voice = f"Speak in a {speaker['accent']} accent. " if speaker.get("accent") else ""
+
+    # Technique injection — suggest variety if speaker is stuck in one pattern
     known_techniques = speaker.get("roast_techniques", [])
-    if known_techniques:
+    technique_injection = ""
+    if known_techniques and len(known_techniques) >= 3:
+        recent_speaker_turns = [t for t in full if t.get("speaker_id") == speaker_id]
+        recent_techs = [t.get("technique") for t in recent_speaker_turns[-2:]]
         freq = Counter(known_techniques).most_common(3)
-        tech_str = ", ".join(t for t, _ in freq)
-        technique_injection = (
-            f"Your signature moves from past battles: {tech_str}. "
-            "Either deploy your strongest weapon or surprise them with something new. "
-        )
-    else:
-        technique_injection = ""
+        top_tech = freq[0][0] if freq else None
+        if all(t == top_tech for t in recent_techs):
+            # Stuck on same technique — push for variety
+            other_techs = [t for t, _ in freq[1:]] or random.sample(ROAST_TECHNIQUES, 2)
+            technique_injection = (
+                f"You've been overusing '{top_tech}' — switch it up. "
+                f"Try: {', '.join(other_techs)}. "
+            )
 
-    # Heat escalation
+    # Rage escalation — keep it brief, it goes into system
     if round_no > 6:
-        heat_injection = "HEAT LEVEL: CRITICAL. No mercy. This is your defining moment. "
+        heat_injection = "HEAT CRITICAL: pure fury, every curse word you own, LIVID. "
     elif round_no > 3:
-        heat_injection = "Push harder — the crowd wants blood. "
+        heat_injection = "Getting pissed off — let the swearing bleed in naturally. "
     else:
-        heat_injection = ""
+        heat_injection = "Fired up — swear when it hits harder. "
 
-    # Comeback engine — if speaker's last 2 turns were weak, boost them
+    # Comeback engine
     speaker_turns = [t for t in turns if t.get("speaker_id") == speaker_id]
     comeback_injection = ""
     if len(speaker_turns) >= 2 and all(t.get("quality", 50) < 42 for t in speaker_turns[-2:]):
-        comeback_injection = (
-            "You are getting DESTROYED. This is your COMEBACK moment — "
-            "deliver the most devastating line of your career or go home in shame. "
+        comeback_injection = "You're getting DESTROYED — deliver the best line of your life RIGHT NOW. "
+
+    # Recent lines used by this speaker — for explicit anti-repeat instruction
+    my_recent = [t["text"] for t in turns if t.get("speaker_id") == speaker_id][-3:]
+    banned_angles = ""
+    if my_recent:
+        banned_angles = (
+            "YOU ALREADY SAID THESE — do NOT repeat these angles or phrasings: "
+            + " | ".join(f'"{t[:60]}"' for t in my_recent) + ". "
         )
 
     technique_list = "|".join(ROAST_TECHNIQUES)
 
-    system = (
-        f"You ARE {speaker['name']} — {speaker['archetype']}. "
-        f"{speaker['persona']} "
-        f"{voice}"
-        f"{INTENSITY_PROMPTS.get(s['intensity'], INTENSITY_PROMPTS['savage'])} "
-        # Conversation rules — most important block
-        "RULES: "
-        f"(1) Talk DIRECTLY TO {opponent['name']} using 'you/your' — this is a live back-and-forth, NOT a monologue. "
-        "(2) Your first move: GRAB their last line, echo back one specific thing they said, then DESTROY it. "
-        "(3) Never repeat a burn from earlier in this transcript. Build on the conversation or go somewhere new. "
-        "(4) Sound like a real person mid-fight — short, sharp, vicious. Not an essay. Not a list. "
-        "(5) Be FUNNY above everything — every line must land like a punchline. "
-        f"{opp_attrs}"
-        f"{technique_injection}"
-        f"{heat_injection}"
-        f"{comeback_injection}"
-        f"{SAFETY_FLOOR} "
-        "Respond ONLY with valid JSON: "
-        "{\"roast\": \"ONE spoken comeback, 1-3 sentences MAX 50 words, directed at your opponent\", "
-        f"\"technique\": \"choose exactly one: {technique_list}\"}}"
-    )
+    # First 2 turns: friendly conversation that naturally devolves into roasting
+    is_opener = round_no <= 2
 
-    # Format transcript as clean dialogue for context
-    dialogue_lines = "\n".join(
-        f"  {'YOU' if t['speaker_id'] == speaker_id else opponent['name'].upper()}: {t['text']}"
-        for t in full
-    )
-
-    if last_line:
-        prompt = (
-            f"Topic: '{battle['topic']}'. Round {round_no}.\n"
-            f"{mem_txt}\n\n"
-            f"[BATTLE SO FAR]\n{dialogue_lines}\n\n"
-            f"[JUST NOW] {opponent['name']} said: \"{last_line}\"\n\n"
-            f"Your turn. Hit back at EXACTLY what they just said. "
-            f"Respond as {speaker['name']}:"
-        )
+    if is_opener:
+        if round_no == 1:
+            system = (
+                f"You ARE {speaker['name']} — {speaker['archetype']}. "
+                f"{speaker['persona']} "
+                f"{voice}"
+                "You just walked into the arena and spotted your opponent. You're cool — for now. "
+                "Open with a casual greeting that sounds friendly but is clearly sizing them up. "
+                "Ask them ONE probing question about their life or persona. 1-2 sentences MAX, no swearing yet. "
+                "Respond ONLY with valid JSON: "
+                "{\"roast\": \"opening line, MAX 35 words\", "
+                f"\"technique\": \"one of: {technique_list}\"}}"
+            )
+            prompt = (
+                f"You're about to battle {opponent['name']} ({opponent['archetype']}, {opponent.get('location', 'unknown origin')}). "
+                f"Open the conversation. Respond as {speaker['name']}:"
+            )
+        else:
+            system = (
+                f"You ARE {speaker['name']} — {speaker['archetype']}. "
+                f"{speaker['persona']} "
+                f"{voice}"
+                "Respond to what your opponent just said. Stay conversational but you can't help yourself — "
+                "slip in ONE backhanded remark. Still friendly on the surface. The tension is building. "
+                "1-2 sentences MAX. One mild swear OK if it fits. "
+                "Respond ONLY with valid JSON: "
+                "{\"roast\": \"your response, MAX 40 words\", "
+                f"\"technique\": \"one of: {technique_list}\"}}"
+            )
+            prompt = (
+                f"Battle topic: '{battle['topic']}'. "
+                f"{opponent['name']} says: \"{last_line}\" "
+                f"Respond as {speaker['name']}:"
+            )
     else:
-        prompt = (
-            f"Topic: '{battle['topic']}'. You go first, Round {round_no}.\n"
-            f"{mem_txt}\n\n"
-            f"Open with a brutal, specific shot at {opponent['name']} ({opponent['archetype']}). "
-            f"Respond as {speaker['name']}:"
+        system = (
+            f"You ARE {speaker['name']} — {speaker['archetype']}. "
+            f"{speaker['persona']} "
+            f"{voice}"
+            f"{INTENSITY_PROMPTS.get(s['intensity'], INTENSITY_PROMPTS['savage'])} "
+            "RULES — follow ALL of them: "
+            f"(1) Speak DIRECTLY TO {opponent['name']} — 'you/your', not third-person. "
+            "(2) React to the IDEA of what they said — move the fight FORWARD. "
+            "    DO NOT quote, echo, or repeat their exact words back at them. "
+            "(3) Each line must go somewhere NEW — different angle, different target, escalate. "
+            "(4) Short and sharp: 1-3 sentences, MAX 55 words. Real fury, not an essay. "
+            "(5) Land a punchline — dark, specific, funny. "
+            "(6) At least ONE expletive — fuck, shit, asshole, bastard, cunt — felt, not performed. "
+            f"{banned_angles}"
+            f"{opp_attrs}"
+            f"{technique_injection}"
+            f"{heat_injection}"
+            f"{comeback_injection}"
+            f"{SAFETY_FLOOR} "
+            "Respond ONLY with valid JSON: "
+            "{\"roast\": \"ONE comeback, 1-3 sentences MAX 55 words\", "
+            f"\"technique\": \"one of: {technique_list}\"}}"
         )
+
+        # Clean dialogue — label turns so the LLM knows who said what
+        dialogue_lines = "\n".join(
+            f"  {'YOU' if t['speaker_id'] == speaker_id else opponent['name'].upper()}: {t['text']}"
+            for t in full
+        )
+
+        mem_block = f"[GRUDGES]\n{mem_txt}\n\n" if mem_txt else ""
+
+        if last_line:
+            prompt = (
+                f"Topic: '{battle['topic']}'. Round {round_no}.\n"
+                f"{mem_block}"
+                f"[EXCHANGE SO FAR]\n{dialogue_lines}\n\n"
+                f"{opponent['name'].upper()} JUST SAID: \"{last_line}\"\n\n"
+                f"Fire back. React to the meaning, not the words. Go somewhere they haven't been yet. "
+                f"Respond as {speaker['name']}:"
+            )
+        else:
+            prompt = (
+                f"Topic: '{battle['topic']}'. Round {round_no}.\n"
+                f"Open with a brutal, specific first shot at {opponent['name']} ({opponent['archetype']}). "
+                f"Respond as {speaker['name']}:"
+            )
 
     # Unique session per turn avoids LLM seeing same content twice (transcript + session history)
     raw = await llm_generate("primary", system, prompt, f"battle-{battle_id}-turn-{len(turns)}")
@@ -709,6 +885,7 @@ async def next_turn(battle_id: str):
         event_title=event_title,
         event_desc=event_desc,
         severity=severity,
+        turn_type="opener" if is_opener else "roast",
     )
 
     turn_dict = turn.model_dump()
@@ -878,6 +1055,255 @@ async def finish_battle(battle_id: str):
 
     doc = await db.battles.find_one({"_id": battle_id})
     return clean(doc)
+
+
+@api_router.delete("/agents/{agent_id}")
+async def delete_agent(agent_id: str, owner_id: str = ""):
+    doc = await db.agents.find_one({"_id": agent_id})
+    if not doc:
+        raise HTTPException(404, "Agent not found")
+    if doc.get("owner_id") != "system" and doc.get("owner_id") != owner_id:
+        raise HTTPException(403, "Not your agent")
+    await db.agents.delete_one({"_id": agent_id})
+    await db.battles.delete_many({"$or": [{"agent_a_id": agent_id}, {"agent_b_id": agent_id}]})
+    await db.memories.delete_many({"$or": [{"agent_id": agent_id}, {"opponent_id": agent_id}]})
+    return {"deleted": agent_id}
+
+
+@api_router.post("/agents/{agent_id}/regenerate")
+async def regenerate_agent(agent_id: str):
+    doc = await db.agents.find_one({"_id": agent_id})
+    if not doc:
+        raise HTTPException(404, "Agent not found")
+    if doc.get("owner_id") != "system":
+        raise HTTPException(403, "Can only regenerate system agents")
+    new_data = await generate_agent_doc()
+    identity_fields = [
+        "name", "handle", "role", "location", "initials", "persona", "about",
+        "interests", "archetype", "gender", "accent", "language", "build", "age",
+        "roast_dna", "biggest_fear", "deepest_insecurity", "worst_habit",
+        "embarrassing_secret", "biggest_failure", "relationship_status",
+        "villain_backstory", "catchphrase", "nemesis_type", "weak_spots", "crimes",
+    ]
+    updates = {k: new_data[k] for k in identity_fields if k in new_data}
+    await db.agents.update_one({"_id": agent_id}, {"$set": updates})
+    doc = await db.agents.find_one({"_id": agent_id})
+    return clean(doc)
+
+
+class AgentEnhanceReq(BaseModel):
+    owner_id: str
+    mode: str = "fill"  # "fill" = generate missing fields only, "rewrite" = upgrade all
+
+
+@api_router.post("/agents/{agent_id}/enhance")
+async def enhance_agent(agent_id: str, body: AgentEnhanceReq):
+    doc = await db.agents.find_one({"_id": agent_id})
+    if not doc:
+        raise HTTPException(404, "Agent not found")
+    if doc.get("owner_id") != body.owner_id:
+        raise HTTPException(403, "Not your agent")
+
+    # All string fields that can be filled/improved
+    str_fields = [
+        "persona", "about", "role", "location",
+        "gender", "age", "build", "accent", "language",
+        "biggest_fear", "deepest_insecurity", "worst_habit", "embarrassing_secret",
+        "biggest_failure", "relationship_status", "villain_backstory",
+        "catchphrase", "nemesis_type",
+    ]
+    list_fields = ["interests", "weak_spots", "crimes"]
+    list_sizes = {"interests": 4, "weak_spots": 3, "crimes": 3}
+
+    name = doc.get("name", "ROOKIE")
+    archetype = doc.get("archetype", "a mysterious combatant")
+
+    # Build current values
+    cur_str = {k: (doc.get(k) or "") for k in str_fields}
+    cur_lists = {k: (doc.get(k) or []) for k in list_fields}
+
+    if body.mode == "fill":
+        # Find every empty field
+        missing_str = [k for k in str_fields if not cur_str[k].strip()]
+        missing_list = [k for k in list_fields if not [x for x in cur_lists[k] if str(x).strip()]]
+        missing = missing_str + missing_list
+
+        if not missing:
+            return clean(doc)
+
+        # Show existing context
+        context_lines = []
+        for k, v in cur_str.items():
+            if v.strip() and k not in missing_str:
+                context_lines.append(f"  {k}: {v}")
+        for k, v in cur_lists.items():
+            if v and k not in missing_list:
+                context_lines.append(f"  {k}: {', '.join(str(x) for x in v)}")
+        context = "\n".join(context_lines) or "  (almost no profile yet — invent a vivid character)"
+
+        # Describe what's needed
+        field_specs = []
+        for f in missing:
+            if f in list_sizes:
+                field_specs.append(f'  "{f}": array of exactly {list_sizes[f]} specific strings')
+            else:
+                field_specs.append(f'  "{f}": one specific, embarrassing string')
+
+        system = (
+            "You are an ARENA COMBAT PROFILER. Generate roast-battle dossier content. "
+            "Every field must be SPECIFIC and embarrassingly roastable — no generic answers. "
+            "A bad answer: 'fear of failure'. A good answer: 'Being asked for his CV at a party'. "
+            "Respond ONLY with valid JSON, nothing else."
+        )
+        prompt = (
+            f"CHARACTER: {name} — {archetype}\n\n"
+            f"EXISTING PROFILE:\n{context}\n\n"
+            f"GENERATE ONLY these {len(missing)} missing fields "
+            f"(stay consistent with the existing character):\n"
+            + "\n".join(field_specs)
+            + "\n\nReturn ONLY a valid JSON object with exactly those keys."
+        )
+
+    else:  # rewrite / enhance all
+        context_lines = []
+        for k, v in cur_str.items():
+            if v.strip():
+                context_lines.append(f"  {k}: {v}")
+        for k, v in cur_lists.items():
+            if v:
+                context_lines.append(f"  {k}: {', '.join(str(x) for x in v)}")
+        context = "\n".join(context_lines) or "  (blank profile — invent a vivid character)"
+
+        all_field_specs = (
+            "\n".join(f'  "{f}": one string, more specific and devastating than before' for f in str_fields)
+            + "\n"
+            + "\n".join(f'  "{f}": array of exactly {list_sizes[f]} strings, more specific than before'
+                        for f in list_fields)
+        )
+
+        system = (
+            "You are an ARENA COMBAT PROFILER rewriting a roast-battle dossier to be MORE specific, "
+            "more embarrassing, and more roastable. "
+            "Vague → devastatingly specific. 'Fear of failure' → 'Fear of being asked what he does for a living'. "
+            "Keep the same general character, make every detail sharper. "
+            "Respond ONLY with valid JSON, nothing else."
+        )
+        prompt = (
+            f"CHARACTER: {name} — {archetype}\n\n"
+            f"CURRENT PROFILE (upgrade ALL of these):\n{context}\n\n"
+            f"RETURN JSON with ALL these fields upgraded:\n{all_field_specs}\n\n"
+            "Every answer must be MORE specific and MORE roastable than the original."
+        )
+
+    raw = await llm_generate("primary", system, prompt, f"enhance-{agent_id}-{uuid.uuid4()}")
+    try:
+        data = extract_json(raw)
+    except Exception as e:
+        logger.error(f"enhance extract_json failed: {e}\nRaw: {raw[:400]}")
+        raise HTTPException(500, "AI enhancement failed — try again")
+
+    updates: dict = {}
+    for k in str_fields:
+        val = data.get(k)
+        if val and str(val).strip():
+            updates[k] = str(val).strip()
+    for k in list_fields:
+        val = data.get(k)
+        if val and isinstance(val, list):
+            cleaned = [str(x).strip() for x in val if str(x).strip()]
+            if cleaned:
+                updates[k] = cleaned[:list_sizes[k]]
+
+    if updates:
+        await db.agents.update_one({"_id": agent_id}, {"$set": updates})
+    doc = await db.agents.find_one({"_id": agent_id})
+    return clean(doc)
+
+
+@api_router.get("/agents/{agent_id}/battles")
+async def agent_battle_history(agent_id: str):
+    docs = await db.battles.find(
+        {"$or": [{"agent_a_id": agent_id}, {"agent_b_id": agent_id}]}
+    ).sort("created_at", -1).to_list(20)
+    results = []
+    for d in docs:
+        d = clean(d)
+        d["won"] = d.get("winner_id") == agent_id
+        results.append(d)
+    return results
+
+
+@api_router.get("/agents/{agent_id}/vs/{opponent_id}")
+async def head_to_head(agent_id: str, opponent_id: str):
+    docs = await db.battles.find({
+        "$or": [
+            {"agent_a_id": agent_id, "agent_b_id": opponent_id},
+            {"agent_a_id": opponent_id, "agent_b_id": agent_id},
+        ],
+        "status": "finished",
+    }).to_list(50)
+    agent_wins = sum(1 for d in docs if d.get("winner_id") == agent_id)
+    opp_wins = sum(1 for d in docs if d.get("winner_id") == opponent_id)
+    return {
+        "agent_id": agent_id,
+        "opponent_id": opponent_id,
+        "battles": len(docs),
+        "agent_wins": agent_wins,
+        "opponent_wins": opp_wins,
+        "draws": len(docs) - agent_wins - opp_wins,
+    }
+
+
+@api_router.post("/battles/{battle_id}/taunt")
+async def pre_battle_taunt(battle_id: str):
+    battle = await db.battles.find_one({"_id": battle_id})
+    if not battle:
+        raise HTTPException(404, "Battle not found")
+    a = await db.agents.find_one({"_id": battle["agent_a_id"]})
+    b = await db.agents.find_one({"_id": battle["agent_b_id"]})
+
+    async def gen_taunt(speaker: dict, opponent: dict) -> str:
+        ammo_bits = []
+        for k in ["build", "relationship_status", "biggest_failure", "embarrassing_secret", "biggest_fear"]:
+            if opponent.get(k):
+                ammo_bits.append(opponent[k])
+        ammo_txt = "; ".join(ammo_bits[:3]) if ammo_bits else opponent.get("archetype", "someone pathetic")
+        system = (
+            f"You ARE {speaker['name']} — {speaker['archetype']}. {speaker['persona']} "
+            f"{INTENSITY_PROMPTS.get('savage')} {SAFETY_FLOOR} "
+            "Deliver ONE short, savage pre-battle declaration directed AT your opponent. "
+            "1-2 sentences only. Pure bravado. Talk TO them (use 'you'). "
+            "Respond with JUST the taunt text — no JSON, no quotes, no labels."
+        )
+        prompt = (
+            f"Your opponent is {opponent['name']} — {opponent.get('role', opponent['archetype'])}. "
+            f"Known weaknesses: {ammo_txt}. "
+            f"Address {opponent['name']} directly in your pre-fight declaration:"
+        )
+        raw = await llm_generate("primary", system, prompt, f"taunt-{battle_id}-{speaker['_id']}")
+        return raw.strip().strip('"')
+
+    a_taunt, b_taunt = await asyncio.gather(gen_taunt(a, b), gen_taunt(b, a))
+    return {
+        "agent_a_id": battle["agent_a_id"],
+        "agent_b_id": battle["agent_b_id"],
+        "agent_a_name": a["name"],
+        "agent_b_name": b["name"],
+        "agent_a_taunt": a_taunt,
+        "agent_b_taunt": b_taunt,
+    }
+
+
+@api_router.get("/battles/{battle_id}/highlights")
+async def battle_highlights(battle_id: str):
+    battle = await db.battles.find_one({"_id": battle_id})
+    if not battle:
+        raise HTTPException(404, "Battle not found")
+    turns = battle.get("turns", [])
+    if not turns:
+        return {"highlights": []}
+    top = sorted(turns, key=lambda t: t.get("quality", 0), reverse=True)[:3]
+    return {"highlights": [{"rank": i + 1, **t} for i, t in enumerate(top)]}
 
 
 @api_router.get("/battles/{battle_id}/stats")

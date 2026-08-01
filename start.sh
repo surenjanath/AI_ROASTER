@@ -85,8 +85,8 @@ fi
 
 # ---- check Python deps ----
 echo "▶  Checking backend Python deps..."
-python3 -c "import fastapi, uvicorn, motor, httpx, dotenv, pydantic" 2>/dev/null \
-  || { echo "  Installing..."; pip3 install fastapi uvicorn motor httpx python-dotenv pydantic; }
+python3 -c "import fastapi, uvicorn, motor, httpx, dotenv, pydantic, litellm" 2>/dev/null \
+  || { echo "  Installing..."; pip3 install fastapi uvicorn motor httpx python-dotenv pydantic litellm; }
 echo "  ✓ Python deps OK"
 
 # ---- check node_modules ----

@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Agent } from "@/src/api";
 import { COLORS, FONTS, SPACING } from "@/src/theme";
@@ -55,6 +55,8 @@ export default function ProfileView({
   showBack,
   onBack,
   onEdit,
+  onDelete,
+  onRegenerate,
   label,
 }: {
   agent: Agent;
@@ -63,6 +65,8 @@ export default function ProfileView({
   showBack?: boolean;
   onBack?: () => void;
   onEdit?: () => void;
+  onDelete?: () => void;
+  onRegenerate?: () => void;
   label?: string;
 }) {
   const uniqueTechniques = [...new Set(agent.roast_techniques || [])].slice(0, 6);
@@ -264,6 +268,121 @@ export default function ProfileView({
           </View>
         </View>
       </View>
+
+      {/* Psychological profile / villain origin */}
+      {agent.villain_backstory ? (
+        <View style={styles.section}>
+          <MicroLabel color={COLORS.mute}>VILLAIN ORIGIN</MicroLabel>
+          <Text style={styles.backstoryText}>"{agent.villain_backstory}"</Text>
+        </View>
+      ) : null}
+
+      {agent.catchphrase ? (
+        <View style={styles.section}>
+          <MicroLabel color={COLORS.mute}>CATCHPHRASE</MicroLabel>
+          <Text style={styles.catchphraseText}>"{agent.catchphrase}"</Text>
+        </View>
+      ) : null}
+
+      {agent.relationship_status ? (
+        <View style={styles.section}>
+          <MicroLabel color={COLORS.mute}>LOVE LIFE</MicroLabel>
+          <Text style={styles.traitVal}>{agent.relationship_status}</Text>
+        </View>
+      ) : null}
+
+      {/* Classified dossier */}
+      {(agent.biggest_fear || agent.deepest_insecurity || agent.embarrassing_secret || agent.biggest_failure) ? (
+        <View style={styles.dossierCard}>
+          <MicroLabel color={COLORS.surface} style={{ opacity: 0.5, marginBottom: SPACING.sm }}>CLASSIFIED DOSSIER</MicroLabel>
+          {[
+            ["BIGGEST FEAR", agent.biggest_fear],
+            ["DEEPEST INSECURITY", agent.deepest_insecurity],
+            ["EMBARRASSING SECRET", agent.embarrassing_secret],
+            ["GREATEST FAILURE", agent.biggest_failure],
+            ["WORST HABIT", agent.worst_habit],
+            ["NEMESIS TYPE", agent.nemesis_type],
+          ].filter(([, v]) => !!v).map(([k, v]) => (
+            <View key={k} style={styles.dossierRow}>
+              <MicroLabel color="rgba(242,237,233,0.45)">{k}</MicroLabel>
+              <Text style={styles.dossierVal}>{v}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {/* Psychological triggers */}
+      {(agent.weak_spots ?? []).length > 0 ? (
+        <View style={styles.section}>
+          <MicroLabel color={COLORS.mute}>PSYCHOLOGICAL TRIGGERS</MicroLabel>
+          <View style={styles.triggerList}>
+            {(agent.weak_spots ?? []).map((s, i) => (
+              <View key={i} style={styles.triggerChip}>
+                <MicroLabel color={COLORS.ink}>{s}</MicroLabel>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {/* Crimes on record */}
+      {(agent.crimes ?? []).length > 0 ? (
+        <View style={styles.crimesCard}>
+          <MicroLabel color={COLORS.surface} style={{ opacity: 0.5, marginBottom: SPACING.sm }}>CRIMES ON RECORD</MicroLabel>
+          {(agent.crimes ?? []).map((c, i) => (
+            <View key={i} style={styles.crimeRow}>
+              <MicroLabel color="rgba(242,237,233,0.45)" style={{ marginRight: SPACING.sm }}>
+                {`${String(i + 1).padStart(2, "0")}.`}
+              </MicroLabel>
+              <Text style={styles.crimeText}>{c}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {/* Admin actions */}
+      {(onRegenerate || onDelete) ? (
+        <View style={styles.adminRow}>
+          {onRegenerate ? (
+            <Pressable
+              testID="regenerate-agent-btn"
+              style={styles.regenBtn}
+              onPress={() =>
+                Alert.alert(
+                  "REGENERATE PERSONA",
+                  "Erase their identity and forge a new one from scratch. Stats stay. Who they are does not.",
+                  [
+                    { text: "CANCEL", style: "cancel" },
+                    { text: "REGENERATE", style: "destructive", onPress: onRegenerate },
+                  ]
+                )
+              }
+            >
+              <Ionicons name="refresh-outline" size={14} color={COLORS.ink} />
+              <MicroLabel color={COLORS.ink} style={{ marginLeft: 6 }}>REGENERATE</MicroLabel>
+            </Pressable>
+          ) : null}
+          {onDelete ? (
+            <Pressable
+              testID="delete-agent-btn"
+              style={styles.deleteBtn}
+              onPress={() =>
+                Alert.alert(
+                  "DELETE AGENT",
+                  `Erase ${agent.name} from existence permanently. Their battles go with them.`,
+                  [
+                    { text: "CANCEL", style: "cancel" },
+                    { text: "DELETE", style: "destructive", onPress: onDelete },
+                  ]
+                )
+              }
+            >
+              <Ionicons name="trash-outline" size={14} color={COLORS.surface} />
+              <MicroLabel color={COLORS.surface} style={{ marginLeft: 6 }}>DELETE AGENT</MicroLabel>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -409,5 +528,80 @@ const styles = StyleSheet.create({
     fontSize: 30,
     color: COLORS.ink,
     letterSpacing: -2,
+  },
+  backstoryText: {
+    fontFamily: FONTS.mono,
+    fontSize: 12,
+    color: COLORS.ink,
+    lineHeight: 20,
+    marginTop: SPACING.sm,
+    fontStyle: "italic",
+  },
+  catchphraseText: {
+    fontFamily: FONTS.display,
+    fontWeight: "700",
+    fontSize: 16,
+    color: COLORS.ink,
+    marginTop: SPACING.sm,
+    letterSpacing: -0.3,
+  },
+  dossierCard: {
+    backgroundColor: "#1A1A1A",
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.sm,
+    padding: SPACING.lg,
+  },
+  dossierRow: { marginBottom: SPACING.sm },
+  dossierVal: {
+    fontFamily: FONTS.display,
+    fontWeight: "700",
+    fontSize: 14,
+    color: COLORS.surface,
+    marginTop: 2,
+    lineHeight: 20,
+  },
+  triggerList: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.sm, marginTop: SPACING.sm },
+  triggerChip: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+  },
+  crimesCard: {
+    backgroundColor: "#2A0A0A",
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.sm,
+    padding: SPACING.lg,
+  },
+  crimeRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: SPACING.sm },
+  crimeText: {
+    fontFamily: FONTS.mono,
+    fontSize: 12,
+    color: COLORS.surface,
+    flex: 1,
+    lineHeight: 19,
+  },
+  adminRow: {
+    flexDirection: "row",
+    gap: SPACING.sm,
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.xl,
+  },
+  regenBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: SPACING.md,
+  },
+  deleteBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#8B0000",
+    paddingVertical: SPACING.md,
   },
 });

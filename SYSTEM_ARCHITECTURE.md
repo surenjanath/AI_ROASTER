@@ -89,7 +89,7 @@ Leaderboard recalculated (shame_score = wins×10 + insult_severity + grudges×2)
 | **Primary LLM** | `gemini-3-flash-preview` (via Emergent) | Persona generation + roast turns |
 | **Secondary LLM** | `gemini-2.5-flash` (via Emergent) | Meta-cognition: judging + identity rewrite |
 | **Alt LLM provider** | Ollama (local) | Configurable via Settings screen |
-| **LLM abstraction** | `emergentintegrations` 0.2.0 + custom `ollama_chat()` | `llm_generate(kind, system, prompt, session)` |
+| **LLM abstraction** | `backend/llmclient/` (litellm wrapper) + custom `ollama_chat()` | `llm_generate(kind, system, prompt, session)` |
 | **HTTP client (backend)** | httpx (async) | Used for Ollama calls |
 | **Validation** | Pydantic v2 | All API request/response models |
 | **Package mgr (FE)** | npm with `.npmrc` custom registry | |

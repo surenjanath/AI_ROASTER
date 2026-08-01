@@ -8,7 +8,7 @@ import re
 import pytest
 import requests
 
-BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
+BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "http://localhost:8001").rstrip("/")
 API = f"{BASE_URL}/api"
 
 S = requests.Session()
@@ -16,22 +16,41 @@ S.headers.update({"Content-Type": "application/json"})
 
 state = {}
 
+SETTINGS_KEYS = [
+    "provider", "primary_model", "secondary_model",
+    "ollama_base_url", "ollama_primary_model", "ollama_secondary_model",
+    "max_turns", "intensity",
+]
+
+
+@pytest.fixture(scope="module", autouse=True)
+def preserve_settings():
+    """Snapshot the live settings singleton and put it back afterwards.
+
+    These are integration tests against a running server, so without this the
+    suite permanently reconfigures whatever instance it was pointed at.
+    """
+    original = S.get(f"{API}/settings").json()
+    yield
+    S.put(f"{API}/settings", json={k: original[k] for k in SETTINGS_KEYS if k in original})
+
 
 # ---------- Settings ----------
 class TestSettings:
     def test_get_defaults(self):
-        # ensure clean defaults first (reset intensity/max_turns to defaults)
+        # Exercise the provider toggle without stranding the server on a hosted
+        # engine it may have no key for — flip to emergent, assert, flip back.
+        before = S.get(f"{API}/settings").json()["provider"]
         S.put(f"{API}/settings", json={"intensity": "savage", "max_turns": 8, "provider": "emergent"})
         r = S.get(f"{API}/settings")
         assert r.status_code == 200, r.text
         d = r.json()
-        for k in ["provider", "primary_model", "secondary_model",
-                  "ollama_base_url", "ollama_primary_model", "ollama_secondary_model",
-                  "max_turns", "intensity"]:
+        for k in SETTINGS_KEYS:
             assert k in d, f"missing key {k}"
         assert d["provider"] == "emergent"
         assert d["max_turns"] == 8
         assert d["intensity"] == "savage"
+        S.put(f"{API}/settings", json={"provider": before})
 
     def test_put_updates_and_persists(self):
         r = S.put(f"{API}/settings", json={"intensity": "brutal", "max_turns": 6})

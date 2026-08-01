@@ -6,7 +6,7 @@ import time
 import pytest
 import requests
 
-BASE = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/") + "/api"
+BASE = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "http://localhost:8001").rstrip("/") + "/api"
 TIMEOUT = 60
 
 

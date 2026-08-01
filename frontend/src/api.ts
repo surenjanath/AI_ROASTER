@@ -26,9 +26,43 @@ export type Agent = {
   avg_quality: number;
   signature_move: string;
   roast_dna: string;
+  // Deep psychological combat profile
+  biggest_fear: string;
+  deepest_insecurity: string;
+  worst_habit: string;
+  embarrassing_secret: string;
+  biggest_failure: string;
+  relationship_status: string;
+  villain_backstory: string;
+  catchphrase: string;
+  nemesis_type: string;
+  weak_spots: string[];
+  crimes: string[];
   active: boolean;
   owner_id: string;
   created_at: string;
+};
+
+export type PreBattleTaunt = {
+  agent_a_id: string;
+  agent_b_id: string;
+  agent_a_name: string;
+  agent_b_name: string;
+  agent_a_taunt: string;
+  agent_b_taunt: string;
+};
+
+export type BattleHighlights = {
+  highlights: Array<{ rank: number } & Turn>;
+};
+
+export type HeadToHead = {
+  agent_id: string;
+  opponent_id: string;
+  battles: number;
+  agent_wins: number;
+  opponent_wins: number;
+  draws: number;
 };
 
 export type Turn = {
@@ -41,6 +75,7 @@ export type Turn = {
   event_title: string;
   event_desc: string;
   severity: number;
+  turn_type?: string;
   ts: string;
 };
 
@@ -104,6 +139,16 @@ export const api = {
   getAgent: (id: string): Promise<Agent> => req(`/agents/${id}`),
   generateAgent: (): Promise<Agent> =>
     req("/agents/generate", { method: "POST" }),
+  deleteAgent: (id: string, owner_id?: string): Promise<{ deleted: string }> =>
+    req(`/agents/${id}${owner_id ? `?owner_id=${encodeURIComponent(owner_id)}` : ""}`, { method: "DELETE" }),
+  regenerateAgent: (id: string): Promise<Agent> =>
+    req(`/agents/${id}/regenerate`, { method: "POST" }),
+  enhanceAgent: (id: string, owner_id: string, mode: "fill" | "rewrite"): Promise<Agent> =>
+    req(`/agents/${id}/enhance`, { method: "POST", body: JSON.stringify({ owner_id, mode }) }),
+  agentBattles: (id: string): Promise<(Battle & { won: boolean })[]> =>
+    req(`/agents/${id}/battles`),
+  headToHead: (agentId: string, opponentId: string): Promise<HeadToHead> =>
+    req(`/agents/${agentId}/vs/${opponentId}`),
   myAgent: (owner_id: string): Promise<Agent> =>
     req("/my-agent", { method: "POST", body: JSON.stringify({ owner_id }) }),
   editAgent: (
@@ -111,18 +156,12 @@ export const api = {
     body: { owner_id: string } & Partial<
       Pick<
         Agent,
-        | "name"
-        | "role"
-        | "location"
-        | "initials"
-        | "persona"
-        | "about"
-        | "interests"
-        | "gender"
-        | "accent"
-        | "language"
-        | "build"
-        | "age"
+        | "name" | "role" | "location" | "initials" | "persona" | "about"
+        | "interests" | "gender" | "accent" | "language" | "build" | "age"
+        | "biggest_fear" | "deepest_insecurity" | "worst_habit"
+        | "embarrassing_secret" | "biggest_failure" | "relationship_status"
+        | "villain_backstory" | "catchphrase" | "nemesis_type"
+        | "weak_spots" | "crimes"
       >
     >
   ): Promise<Agent> =>
@@ -132,6 +171,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ agent_a_id, agent_b_id, topic }),
     }),
+  preBattleTaunt: (battleId: string): Promise<PreBattleTaunt> =>
+    req(`/battles/${battleId}/taunt`, { method: "POST" }),
+  battleHighlights: (battleId: string): Promise<BattleHighlights> =>
+    req(`/battles/${battleId}/highlights`),
   listBattles: (): Promise<Battle[]> => req("/battles"),
   getBattle: (id: string): Promise<Battle> => req(`/battles/${id}`),
   nextTurn: (id: string): Promise<Turn> =>
