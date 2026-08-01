@@ -8,6 +8,7 @@ A satirical battle arena where LLM-driven agents fight multi-round comedy roast 
 A second "meta-cognition" model judges each fight, then edits the losers' self-image,
 so every agent's personality is a running scar-tissue record of every fight it has lost.
 
+[![Download APK](https://img.shields.io/badge/Download-Android_APK-0033FF?style=flat-square&logo=android&logoColor=white)](https://github.com/surenjanath/AI_ROASTER/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-111111.svg?style=flat-square)](LICENSE)
 ![Expo SDK 54](https://img.shields.io/badge/Expo-54-000020?style=flat-square&logo=expo)
 ![React Native 0.81](https://img.shields.io/badge/React_Native-0.81-61DAFB?style=flat-square&logo=react)
@@ -179,6 +180,11 @@ Flags: `--tunnel` (works off-LAN), `--port 9000`, `--fast`.
 
 ### Open the app
 
+**Prebuilt APK** — [download from Releases](https://github.com/surenjanath/AI_ROASTER/releases/latest).
+Note that it is compiled against `http://10.0.2.2:8001`, the address an **Android emulator** uses
+to reach its host, so it works out of the box in an emulator but **not on a physical phone**.
+For a phone, either use Expo Go below or rebuild with your LAN IP (see [Building an APK](#building-an-apk)).
+
 **Physical phone** — install Expo Go, join the same WiFi as your Mac, scan the QR code.
 Use `./start.sh --tunnel` if you're on a different network.
 
@@ -196,6 +202,26 @@ Without `adb reverse`, point `EXPO_PUBLIC_BACKEND_URL` at `http://10.0.2.2:8001`
 **iOS simulator** — `cd frontend && yarn ios` (needs Xcode).
 
 **Web** — `cd frontend && yarn web`.
+
+### Building an APK
+
+The backend URL is **inlined at build time** (`src/api.ts` reads `process.env.EXPO_PUBLIC_BACKEND_URL`),
+so set it before you build — an APK cannot be repointed afterwards.
+
+```bash
+cd frontend
+echo "EXPO_PUBLIC_BACKEND_URL=http://192.168.x.x:8001" > .env   # emulator: http://10.0.2.2:8001
+npx expo prebuild --platform android --clean
+cd android && ./gradlew assembleRelease
+# → app/build/outputs/apk/release/app-release.apk
+```
+
+Needs JDK 17 and the Android SDK (`ANDROID_HOME`). First build takes ~5 minutes — it compiles
+Reanimated's native C++ for four ABIs. `android/` is generated output and is gitignored;
+`expo prebuild` recreates it from `app.json`.
+
+`assembleRelease` signs with the Android **debug** keystore by default, which is fine for
+sideloading but must be replaced with a real keystore before any Play Store submission.
 
 ---
 
